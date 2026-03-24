@@ -567,8 +567,8 @@ function App() {
                         <Pie
                           data={stats.rolesData}
                           cx="50%" cy="50%"
-                          innerRadius={80}
-                          outerRadius={120}
+                          innerRadius={70}
+                          outerRadius={105}
                           paddingAngle={5}
                           dataKey="ערך"
                           nameKey="name"
@@ -628,7 +628,7 @@ function App() {
                         >
                           <CartesianGrid strokeDasharray="3 3" horizontal={false} stroke={chartGridColor} />
                           <XAxis type="number" tick={{ fill: chartTextColor }} />
-                          <YAxis dataKey="name" type="category" width={90} tick={{fontSize: 12, fill: chartTextColor}} />
+                          <YAxis dataKey="name" type="category" width={130} tick={{fontSize: 11, fill: chartTextColor}} />
                           <Tooltip cursor={{fill: isDarkMode ? '#1e293b' : '#f1f5f9'}} contentStyle={tooltipStyle} />
                           <Bar 
                             dataKey="ערך" 
@@ -693,7 +693,7 @@ function App() {
                           <BarChart data={stats.specData} layout="vertical" margin={{ left: 10, right: 20 }}>
                             <CartesianGrid strokeDasharray="3 3" horizontal={false} stroke={chartGridColor} />
                             <XAxis type="number" tick={{ fill: chartTextColor }} />
-                            <YAxis dataKey="name" type="category" width={100} tick={{fontSize: 11, fill: chartTextColor}} />
+                            <YAxis dataKey="name" type="category" width={160} tick={{fontSize: 10, fill: chartTextColor}} />
                             <Tooltip cursor={{fill: isDarkMode ? '#1e293b' : '#f1f5f9'}} contentStyle={tooltipStyle} />
                             <Bar 
                               dataKey="ערך" 
@@ -724,8 +724,8 @@ function App() {
                             <Pie
                               data={stats.orgsData}
                               cx="50%" cy="50%"
-                              innerRadius={60}
-                              outerRadius={90}
+                              innerRadius={50}
+                              outerRadius={80}
                               paddingAngle={5}
                               dataKey="ערך"
                               nameKey="name"
@@ -759,7 +759,7 @@ function App() {
                             <BarChart data={stats.constData} layout="vertical" margin={{ top: 5, right: 30, left: 40, bottom: 5 }}>
                               <CartesianGrid strokeDasharray="3 3" horizontal={false} stroke={chartGridColor} />
                               <XAxis type="number" tick={{ fill: chartTextColor }} />
-                              <YAxis dataKey="name" type="category" width={80} tick={{fontSize: 12, fill: chartTextColor}} />
+                              <YAxis dataKey="name" type="category" width={110} tick={{fontSize: 11, fill: chartTextColor}} />
                               <Tooltip cursor={{fill: isDarkMode ? '#1e293b' : '#f1f5f9'}} contentStyle={tooltipStyle} />
                               <Bar 
                                 dataKey="ערך" 
