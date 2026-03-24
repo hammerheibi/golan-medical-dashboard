@@ -861,17 +861,34 @@ function App() {
                 {Object.entries(selectedRowData).map(([key, value]) => {
                   if (value === '' || value === null || value === undefined) return null;
                   
-                  // Filter out technical fields
-                  const ignoredKeys = ['מס', "מס'", 'מספר', 'מס פנייה crm', 'מס פניה crm', 'תאריך', 'טופל'];
-                  if (ignoredKeys.includes(key.trim().toLowerCase())) return null;
+                  const cleanKey = key.trim().toLowerCase();
+                  
+                  // Filter out technical fields robustly
+                  if (
+                    cleanKey === 'מס' || 
+                    cleanKey === "מס'" || 
+                    cleanKey === 'מספר' || 
+                    cleanKey.includes('crm') || 
+                    cleanKey.includes('פנייה') ||
+                    cleanKey === 'תאריך' || 
+                    cleanKey === 'טופל'
+                  ) return null;
+
+                  // Handle raw Excel date numbers (e.g., 44256)
+                  let displayValue = String(value);
+                  if (typeof value === 'number' && value > 30000 && value < 60000 && cleanKey.includes('תאריך')) {
+                    // Excel epoch starts 1900-01-01
+                    const date = new Date((value - 25569) * 86400 * 1000);
+                    displayValue = date.toLocaleDateString('he-IL');
+                  }
 
                   // Make headers look nicer
-                  const isLongText = String(value).length > 50;
+                  const isLongText = displayValue.length > 50;
                   
                   return (
                     <div key={key} className={`border-b border-slate-100 pb-3 ${isLongText ? 'md:col-span-2' : ''}`}>
                       <p className="text-xs font-bold text-slate-400 mb-1">{key}</p>
-                      <p className="text-sm text-slate-800 font-medium" dir="auto">{String(value)}</p>
+                      <p className="text-sm text-slate-800 font-medium" dir="auto">{displayValue}</p>
                     </div>
                   );
                 })}
