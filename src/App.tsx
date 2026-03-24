@@ -51,7 +51,7 @@ function App() {
         const wb = XLSX.read(bstr, { type: 'binary' });
         const wsname = wb.SheetNames[0];
         const ws = wb.Sheets[wsname];
-        const jsonData = XLSX.utils.sheet_to_json(ws, { defval: '' });
+        const jsonData = XLSX.utils.sheet_to_json(ws, { defval: '', raw: false, dateNF: 'dd/MM/yyyy' });
         setData(jsonData);
         
         clearFilters();
@@ -861,6 +861,10 @@ function App() {
                 {Object.entries(selectedRowData).map(([key, value]) => {
                   if (value === '' || value === null || value === undefined) return null;
                   
+                  // Filter out technical fields
+                  const ignoredKeys = ['מס', "מס'", 'מספר', 'מס פנייה crm', 'מס פניה crm', 'תאריך', 'טופל'];
+                  if (ignoredKeys.includes(key.trim().toLowerCase())) return null;
+
                   // Make headers look nicer
                   const isLongText = String(value).length > 50;
                   
