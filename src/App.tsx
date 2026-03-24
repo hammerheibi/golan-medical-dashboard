@@ -209,8 +209,16 @@ function App() {
           if (drillDown.value === 'כיתת כוננות') return constraints.includes('כוננות') || rowString.includes('כוננות');
           if (drillDown.value === 'מילואים') return constraints.includes('מילואים') || rowString.includes('מילואים');
           return false;
-        case 'active_ready':
-          return rowString.includes('acls') || (rowString.includes('פעיל') && !rowString.includes('לא פעיל') && !rowString.includes('שאינו פעיל'));
+        case 'active_ready': {
+          const aclsDate = getCol(row, ['acls', 'ACLS', 'מבחן']);
+          const activityStatus = getCol(row, ['הגדרת פעילות', 'הגדרת הפעילות']);
+          const aclsStr = String(aclsDate).trim().toLowerCase();
+          const hasValidAcls = aclsStr !== '' && aclsStr !== 'לא' && aclsStr !== 'אין' && aclsStr !== '-';
+          
+          if (roleCat === 'פרמדיקים' && hasValidAcls) return true;
+          if (roleCat === 'חובשים/מע"רים' && activityStatus.includes('פעיל') && !activityStatus.includes('לא פעיל') && !activityStatus.includes('שאינו פעיל')) return true;
+          return false;
+        }
         case 'specialty':
           if (roleCat !== 'רופאים') return false;
           const isTrauma = rowString.includes('טראומה') || rowString.includes('נמרץ') || rowString.includes('כירורגי') || rowString.includes('הרדמה') || rowString.includes('אורתופדיה');
@@ -310,10 +318,17 @@ function App() {
          else if (rowString.includes('צה"ל') || rowString.includes('צבא') || rowString.includes('צבאית')) orgsCount['צה"ל']++;
          else orgsCount['אחר / לא שויך']++; 
       }
+// ACLS / Active - Strict match
+const aclsDate = getCol(row, ['acls', 'ACLS', 'מבחן']);
+const activityStatus = getCol(row, ['הגדרת פעילות', 'הגדרת הפעילות']);
+const aclsStr = String(aclsDate).trim().toLowerCase();
+const hasValidAcls = aclsStr !== '' && aclsStr !== 'לא' && aclsStr !== 'אין' && aclsStr !== '-';
 
-      if (rowString.includes('acls') || (rowString.includes('פעיל') && !rowString.includes('לא פעיל') && !rowString.includes('שאינו פעיל'))) {
-         aclsOrActiveCount++;
-      }
+if (roleCat === 'פרמדיקים' && hasValidAcls) {
+   aclsOrActiveCount++;
+} else if (roleCat === 'חובשים/מע"רים' && activityStatus.includes('פעיל') && !activityStatus.includes('לא פעיל') && !activityStatus.includes('שאינו פעיל')) {
+   aclsOrActiveCount++;
+}
     });
 
     const settlementsData = Object.keys(settlementsCount)
