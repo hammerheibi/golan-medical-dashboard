@@ -871,7 +871,7 @@ function App() {
                     cleanKey.includes('crm') || 
                     cleanKey.includes('פנייה') ||
                     cleanKey === 'תאריך' || 
-                    cleanKey === 'טופל'
+                    cleanKey.includes('טופל')
                   ) return null;
 
                   // Handle raw Excel date numbers (e.g., 44256)
