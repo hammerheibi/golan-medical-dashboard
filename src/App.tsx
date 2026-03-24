@@ -26,6 +26,9 @@ function App() {
   const [filterAvailability, setFilterAvailability] = useState<string>('all');
   const [filterAssigned, setFilterAssigned] = useState<string>('all');
 
+  // Drill-down State
+  const [drillDown, setDrillDown] = useState<{type: string, value: string} | null>(null);
+
   // Pagination State
   const [currentPage, setCurrentPage] = useState(1);
   const rowsPerPage = 15;
@@ -47,7 +50,6 @@ function App() {
         const jsonData = XLSX.utils.sheet_to_json(ws, { defval: '' });
         setData(jsonData);
         
-        // Reset filters on new file
         clearFilters();
       } catch (error) {
         console.error("Error reading excel file", error);
@@ -64,6 +66,15 @@ function App() {
     setFilterRole('all');
     setFilterAvailability('all');
     setFilterAssigned('all');
+    setDrillDown(null);
+  };
+
+  const handleDrillDown = (type: string, value: string) => {
+    setDrillDown({ type, value });
+    setCurrentPage(1);
+    setTimeout(() => {
+      document.getElementById('data-table')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }, 100);
   };
 
   const downloadPDF = async () => {
@@ -92,13 +103,24 @@ function App() {
     return key ? String(row[key]).trim() : '';
   };
 
+  const getName = (row: any) => {
+    let name = getCol(row, ['שם מלא']);
+    if (name) return name;
+    
+    const first = getCol(row, ['פרטי']);
+    const last = getCol(row, ['משפחה']);
+    if (first || last) return `${first} ${last}`.trim();
+    
+    return getCol(row, ['שם', 'זיהוי']);
+  };
+
   const getRoleCategory = (rawRole: string) => {
-    if (!rawRole) return 'אחר/לא הוגדר';
+    if (!rawRole) return 'אחר/לא מוגדר';
     if (rawRole.includes('רופא')) return 'רופאים';
     if (rawRole.includes('פרמדיק') || rawRole.includes('פראמדיק')) return 'פרמדיקים';
-    if (rawRole.includes('אח ') || rawRole.includes('אחות')) return 'אחים/אחיות';
-    if (rawRole.includes('חובש') || rawRole.includes('מע"ר') || rawRole.includes('עזרה ראשונה')) return 'חובשים/מע"רים';
-    return 'אחר/לא הוגדר';
+    if (rawRole.includes('אח ') || rawRole.includes('אחות') || rawRole.includes('אחים')) return 'אחים/אחיות';
+    if (rawRole.includes('חובש') || rawRole.includes('מע"ר') || rawRole.includes('עזרה ראשונה') || rawRole.includes('מגיש')) return 'חובשים/מע"רים';
+    return 'אחר/לא מוגדר';
   };
 
   const isAssignedToEmergency = (val: string) => {
@@ -131,7 +153,7 @@ function App() {
     };
   }, [data]);
 
-  // Apply filters to data
+  // Apply filters to data (Main top filters)
   const filteredData = useMemo(() => {
     return data.filter(row => {
       const s = getCol(row, ['יישוב', 'ישוב']);
@@ -148,19 +170,67 @@ function App() {
     });
   }, [data, filterSettlement, filterRole, filterAvailability, filterAssigned]);
 
-  // Reset pagination when filters change
+  // Apply Drill-down to filtered data for the Table
+  const tableData = useMemo(() => {
+    if (!drillDown) return filteredData;
+    return filteredData.filter(row => {
+      const rowString = Object.values(row).join(' ').toLowerCase();
+      const roleCat = getRoleCategory(getCol(row, ['הכשרה', 'מקצוע', 'רופא', 'פרמדיק', 'אח', 'חובש', 'מע"ר']));
+      
+      switch (drillDown.type) {
+        case 'role': 
+          return roleCat === drillDown.value;
+        case 'missing_equipment': 
+          const eq = getCol(row, ['תיק ציוד', 'תיק רפואי אישי']);
+          return !(eq.includes('כן') || eq === '1' || eq.includes('יש'));
+        case 'availability':
+          return getCol(row, ['זמינות']) === drillDown.value;
+        case 'high_availability':
+          const av = getCol(row, ['זמינות']);
+          return av === '4' || av === '5';
+        case 'assigned':
+          return isAssignedToEmergency(getCol(row, ['שובץ', 'מכלול בחירום'])) === 'yes';
+        case 'bound':
+          const bd = getCol(row, ['מרותק']);
+          return bd.includes('כן') || bd === '1' || bd === 'True';
+        case 'settlement':
+          return getCol(row, ['יישוב', 'ישוב']) === drillDown.value;
+        case 'organization':
+          if (drillDown.value === 'מד"א') return rowString.includes('מד"א') || rowString.includes('מגן דוד');
+          if (drillDown.value === 'איחוד הצלה') return rowString.includes('איחוד');
+          if (drillDown.value === 'צה"ל') return rowString.includes('צה"ל') || rowString.includes('צבא') || rowString.includes('צבאית');
+          return !rowString.includes('מד"א') && !rowString.includes('מגן דוד') && !rowString.includes('איחוד') && !rowString.includes('צה"ל') && !rowString.includes('צבא');
+        case 'specialty':
+          if (roleCat !== 'רופאים') return false;
+          const isTrauma = rowString.includes('טראומה') || rowString.includes('נמרץ') || rowString.includes('כירורגי') || rowString.includes('הרדמה') || rowString.includes('אורתופדיה');
+          const isFam = rowString.includes('משפחה') || rowString.includes('פנימי');
+          const isPed = rowString.includes('ילדים');
+          const isPsych = rowString.includes('פסיכיאטריה');
+          const isWom = rowString.includes('נשים') || rowString.includes('ילודה');
+          if (drillDown.value === 'טראומה, נמרץ וכירורגיה') return isTrauma;
+          if (drillDown.value === 'משפחה ופנימית') return !isTrauma && isFam;
+          if (drillDown.value === 'ילדים') return !isTrauma && !isFam && isPed;
+          if (drillDown.value === 'פסיכיאטריה') return !isTrauma && !isFam && !isPed && isPsych;
+          if (drillDown.value === 'נשים וילודה') return !isTrauma && !isFam && !isPed && !isPsych && isWom;
+          return !isTrauma && !isFam && !isPed && !isPsych && !isWom;
+        default: return true;
+      }
+    });
+  }, [filteredData, drillDown]);
+
+  // Reset pagination when table data changes
   useEffect(() => {
     setCurrentPage(1);
-  }, [filteredData]);
+  }, [tableData]);
 
-  // Compute stats based on FILTERED data
+  // Compute stats based on FILTERED data (Not drilled down data, stats stay stable!)
   const stats = useMemo(() => {
     if (!filteredData.length && !data.length) return null;
 
     let totalPersonnel = filteredData.length;
     let settlementsCount: Record<string, number> = {};
     let availabilityScores: Record<string, number> = { '1':0, '2':0, '3':0, '4':0, '5':0 };
-    let rolesCount: Record<string, number> = { 'רופאים': 0, 'פרמדיקים': 0, 'אחים/אחיות': 0, 'חובשים/מע"רים': 0, 'אחר/לא הוגדר': 0 };
+    let rolesCount: Record<string, number> = { 'רופאים': 0, 'פרמדיקים': 0, 'אחים/אחיות': 0, 'חובשים/מע"רים': 0, 'אחר/לא מוגדר': 0 };
     
     let assignedToEmergency = 0;
     let boundToWorkplace = 0;
@@ -169,7 +239,6 @@ function App() {
 
     let equipmentStatus = { 'יש תיק אישי': 0, 'אין תיק': 0 };
     
-    // New metrics
     let specialtiesCount: Record<string, number> = {};
     let constraintsCount: Record<string, number> = { 'כיתת כוננות': 0, 'מילואים': 0 };
     let orgsCount: Record<string, number> = { 'מד"א': 0, 'איחוד הצלה': 0, 'צה"ל': 0, 'אחר / לא שויך': 0 };
@@ -204,12 +273,10 @@ function App() {
         missingEquipment++;
       }
 
-      // Constraints
       const constraints = getCol(row, ['אילוצ', 'כוננות', 'מילואים']);
       if (constraints.includes('כוננות') || rowString.includes('כוננות')) constraintsCount['כיתת כוננות']++;
       if (constraints.includes('מילואים') || rowString.includes('מילואים')) constraintsCount['מילואים']++;
       
-      // Specialties - Fuzzy match over whole row string for max robustness
       if (roleCat === 'רופאים') {
          if (rowString.includes('טראומה') || rowString.includes('נמרץ') || rowString.includes('כירורגי') || rowString.includes('הרדמה') || rowString.includes('אורתופדיה')) {
             specialtiesCount['טראומה, נמרץ וכירורגיה'] = (specialtiesCount['טראומה, נמרץ וכירורגיה'] || 0) + 1;
@@ -226,15 +293,13 @@ function App() {
          }
       }
 
-      // Organizations - Fuzzy match for max robustness
       if (['פרמדיקים', 'חובשים/מע"רים'].includes(roleCat)) {
          if (rowString.includes('מד"א') || rowString.includes('מגן דוד')) orgsCount['מד"א']++;
          else if (rowString.includes('איחוד')) orgsCount['איחוד הצלה']++;
-         else if (rowString.includes('צה"ל') || rowString.includes('צבא')) orgsCount['צה"ל']++;
+         else if (rowString.includes('צה"ל') || rowString.includes('צבא') || rowString.includes('צבאית')) orgsCount['צה"ל']++;
          else orgsCount['אחר / לא שויך']++; 
       }
 
-      // ACLS / Active - Fuzzy
       if (rowString.includes('acls') || (rowString.includes('פעיל') && !rowString.includes('לא פעיל') && !rowString.includes('שאינו פעיל'))) {
          aclsOrActiveCount++;
       }
@@ -278,20 +343,28 @@ function App() {
     };
   }, [filteredData, data.length]);
 
-  const Card = ({ title, value, icon, subtitle, colorClass = "bg-blue-50 text-blue-600" }: any) => (
-    <div className="bg-white rounded-xl shadow-sm border border-slate-100 p-6 flex flex-col items-start">
+  const Card = ({ title, value, icon, subtitle, colorClass = "bg-blue-50 text-blue-600", onClick, isSelected }: any) => (
+    <div 
+      onClick={onClick}
+      className={`group bg-white rounded-xl shadow-sm border ${isSelected ? 'border-blue-500 ring-2 ring-blue-200' : 'border-slate-100 hover:border-blue-300'} p-6 flex flex-col items-start transition-all ${onClick ? 'cursor-pointer hover:shadow-md' : ''} relative overflow-hidden`}
+    >
       <div className="flex items-center justify-between w-full mb-4">
-        <h3 className="text-slate-500 font-medium">{title}</h3>
-        <div className={`p-2 rounded-lg ${colorClass}`}>{icon}</div>
+        <h3 className="text-slate-500 font-medium relative z-10">{title}</h3>
+        <div className={`p-2 rounded-lg ${colorClass} relative z-10`}>{icon}</div>
       </div>
-      <p className="text-3xl font-bold text-slate-800">{value}</p>
-      {subtitle && <p className="text-sm text-slate-400 mt-2">{subtitle}</p>}
+      <p className="text-3xl font-bold text-slate-800 relative z-10">{value}</p>
+      {subtitle && <p className="text-sm text-slate-400 mt-2 relative z-10">{subtitle}</p>}
+      
+      {onClick && (
+        <div className="absolute bottom-0 left-0 w-full bg-blue-50 py-1 text-center translate-y-full group-hover:translate-y-0 transition-transform duration-300">
+          <span className="text-xs text-blue-600 font-bold">לחץ לצפייה ברשומות 👇</span>
+        </div>
+      )}
     </div>
   );
 
-  // Pagination Logic
-  const totalPages = Math.max(1, Math.ceil(filteredData.length / rowsPerPage));
-  const currentTableData = filteredData.slice((currentPage - 1) * rowsPerPage, currentPage * rowsPerPage);
+  const totalPages = Math.max(1, Math.ceil(tableData.length / rowsPerPage));
+  const currentTableData = tableData.slice((currentPage - 1) * rowsPerPage, currentPage * rowsPerPage);
 
   return (
     <div className="min-h-screen bg-slate-50 p-8 font-sans" dir="rtl">
@@ -388,17 +461,17 @@ function App() {
                <option value="no">טרם שובצו</option>
              </select>
 
-             {(filterSettlement !== 'all' || filterRole !== 'all' || filterAvailability !== 'all' || filterAssigned !== 'all') && (
-               <button 
-                 onClick={clearFilters}
-                 className="flex items-center gap-1 text-sm text-red-500 hover:text-red-700 font-medium mr-auto bg-red-50 px-3 py-2 rounded-lg transition-colors"
-               >
-                 <XCircle size={16} /> נקה סינונים
-               </button>
-             )}
+             <button 
+               onClick={clearFilters}
+               className={`flex items-center gap-1 text-sm font-medium mr-auto px-3 py-2 rounded-lg transition-colors ${
+                 filterSettlement !== 'all' || filterRole !== 'all' || filterAvailability !== 'all' || filterAssigned !== 'all' || drillDown !== null
+                 ? 'text-red-500 hover:text-red-700 bg-red-50' : 'text-slate-400 opacity-50 cursor-not-allowed'
+               }`}
+             >
+               <XCircle size={16} /> נקה את כל הסינונים
+             </button>
           </div>
 
-          {/* Alert if no data after filter */}
           {filteredData.length === 0 ? (
             <div className="bg-amber-50 text-amber-800 p-8 rounded-xl text-center border border-amber-200 font-medium">
               לא נמצאו תוצאות התואמות לסינון שבחרת. אנא שנה את הפילטרים.
@@ -407,7 +480,12 @@ function App() {
             <>
               {/* Top Stats Row */}
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-6">
-                <Card title='סה"כ כוח אדם' value={stats.totalPersonnel} icon={<Users />} subtitle={`מתוך ${data.length} בסה"כ`} />
+                <Card 
+                  title='סה"כ כוח אדם' 
+                  value={stats.totalPersonnel} 
+                  icon={<Users />} 
+                  subtitle={`מתוך ${data.length} בסה"כ`} 
+                />
                 
                 <Card 
                   title='שובצו למכלולים' 
@@ -415,6 +493,8 @@ function App() {
                   icon={<ShieldAlert />} 
                   colorClass="bg-indigo-50 text-indigo-600"
                   subtitle={`${((stats.assignedToEmergency / stats.totalPersonnel) * 100).toFixed(1)}% מסך הצוות המוצג`} 
+                  onClick={() => handleDrillDown('assigned', 'yes')}
+                  isSelected={drillDown?.type === 'assigned' && drillDown?.value === 'yes'}
                 />
                 
                 <Card 
@@ -423,6 +503,8 @@ function App() {
                   icon={<Activity />} 
                   colorClass="bg-slate-100 text-slate-600"
                   subtitle="לא יהיו זמינים ביישוב" 
+                  onClick={() => handleDrillDown('bound', 'yes')}
+                  isSelected={drillDown?.type === 'bound' && drillDown?.value === 'yes'}
                 />
                 
                 <Card 
@@ -439,6 +521,8 @@ function App() {
                   icon={<HeartPulse />} 
                   colorClass="bg-amber-50 text-amber-600"
                   subtitle={`${((stats.highAvailability / stats.totalPersonnel) * 100).toFixed(1)}% מהצוות זמינים מיידית`} 
+                  onClick={() => handleDrillDown('high_availability', 'yes')}
+                  isSelected={drillDown?.type === 'high_availability'}
                 />
 
                 <Card 
@@ -447,16 +531,19 @@ function App() {
                   icon={<AlertTriangle />} 
                   colorClass="bg-red-50 text-red-600"
                   subtitle={`${((stats.missingEquipment / stats.totalPersonnel) * 100).toFixed(1)}% ללא ציוד אישי`} 
+                  onClick={() => handleDrillDown('missing_equipment', 'yes')}
+                  isSelected={drillDown?.type === 'missing_equipment'}
                 />
               </div>
 
               {/* General Charts Section */}
               <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
                 {/* Professions Pie Chart */}
-                <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-100">
+                <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-100 relative group">
                   <h3 className="text-lg font-bold text-slate-800 mb-6 flex items-center gap-2">
                     <Stethoscope className="text-blue-500" size={20} /> פילוח לפי הכשרה רפואית
                   </h3>
+                  <p className="text-xs text-blue-500 absolute top-6 left-6 opacity-0 group-hover:opacity-100 transition-opacity">לחץ על פלח לסינון</p>
                   <div className="h-80 w-full" dir="ltr">
                     <ResponsiveContainer width="100%" height="100%">
                       <PieChart>
@@ -469,6 +556,8 @@ function App() {
                           dataKey="ערך"
                           nameKey="name"
                           label={({name, percent}) => `${name} ${((percent || 0) * 100).toFixed(0)}%`}
+                          onClick={(entry) => handleDrillDown('role', entry.name || '')}
+                          className="cursor-pointer"
                         >
                           {stats.rolesData.map((_, index) => (
                             <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
@@ -482,10 +571,11 @@ function App() {
                 </div>
 
                 {/* Settlements Bar Chart */}
-                <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-100">
+                <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-100 relative group">
                   <h3 className="text-lg font-bold text-slate-800 mb-6 flex items-center gap-2">
                     <MapPin className="text-emerald-500" size={20} /> צוותים רפואיים לפי יישוב (טופ 10)
                   </h3>
+                  <p className="text-xs text-blue-500 absolute top-6 left-6 opacity-0 group-hover:opacity-100 transition-opacity">לחץ על עמודה לסינון</p>
                   <div className="h-80 w-full" dir="ltr">
                     <ResponsiveContainer width="100%" height="100%">
                       <BarChart data={stats.settlementsData} layout="vertical" margin={{ top: 5, right: 30, left: 40, bottom: 5 }}>
@@ -493,17 +583,25 @@ function App() {
                         <XAxis type="number" />
                         <YAxis dataKey="name" type="category" width={80} tick={{fontSize: 12, fill: '#475569'}} />
                         <Tooltip cursor={{fill: '#f1f5f9'}} />
-                        <Bar dataKey="ערך" fill="#10b981" radius={[0, 4, 4, 0]} barSize={24} />
+                        <Bar 
+                          dataKey="ערך" 
+                          fill="#10b981" 
+                          radius={[0, 4, 4, 0]} 
+                          barSize={24} 
+                          onClick={(data) => handleDrillDown('settlement', data.name || '')}
+                          className="cursor-pointer hover:opacity-80"
+                        />
                       </BarChart>
                     </ResponsiveContainer>
                   </div>
                 </div>
-                
+
                 {/* Availability Chart */}
-                <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-100 lg:col-span-2">
+                <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-100 relative group lg:col-span-2">
                   <h3 className="text-lg font-bold text-slate-800 mb-6 flex items-center gap-2">
                     <AlertCircle className="text-amber-500" size={20} /> רמת זמינות (1 = לא זמין, 5 = זמין מיידית)
                   </h3>
+                  <p className="text-xs text-blue-500 absolute top-6 left-6 opacity-0 group-hover:opacity-100 transition-opacity">לחץ על עמודה לסינון</p>
                   <div className="h-64 w-full" dir="ltr">
                     <ResponsiveContainer width="100%" height="100%">
                       <BarChart data={stats.availabilityData}>
@@ -511,7 +609,14 @@ function App() {
                         <XAxis dataKey="name" />
                         <YAxis />
                         <Tooltip cursor={{fill: '#f1f5f9'}} />
-                        <Bar dataKey="ערך" fill="#f59e0b" radius={[4, 4, 0, 0]} barSize={40} />
+                        <Bar 
+                          dataKey="ערך" 
+                          fill="#f59e0b" 
+                          radius={[4, 4, 0, 0]} 
+                          barSize={40} 
+                          onClick={(data) => handleDrillDown('availability', (data.name || '').replace('רמה ', ''))}
+                          className="cursor-pointer hover:opacity-80"
+                        />
                       </BarChart>
                     </ResponsiveContainer>
                   </div>
@@ -527,10 +632,11 @@ function App() {
                 
                 <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
                   {/* Specialties Chart */}
-                  <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-100 flex flex-col">
+                  <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-100 flex flex-col relative group">
                     <h3 className="text-lg font-bold text-slate-800 mb-6 flex items-center gap-2">
                       <Stethoscope className="text-blue-500" size={20} /> התמחויות קריטיות (רופאים)
                     </h3>
+                    <p className="text-xs text-blue-500 absolute top-6 left-6 opacity-0 group-hover:opacity-100 transition-opacity">לחץ לסינון</p>
                     {stats.specData.length > 0 ? (
                       <div className="h-64 w-full flex-grow" dir="ltr">
                         <ResponsiveContainer width="100%" height="100%">
@@ -539,7 +645,14 @@ function App() {
                             <XAxis type="number" />
                             <YAxis dataKey="name" type="category" width={100} tick={{fontSize: 11, fill: '#475569'}} />
                             <Tooltip cursor={{fill: '#f1f5f9'}} />
-                            <Bar dataKey="ערך" fill="#3b82f6" radius={[0, 4, 4, 0]} barSize={20} />
+                            <Bar 
+                              dataKey="ערך" 
+                              fill="#3b82f6" 
+                              radius={[0, 4, 4, 0]} 
+                              barSize={20} 
+                              onClick={(data) => handleDrillDown('specialty', data.name || '')}
+                              className="cursor-pointer hover:opacity-80"
+                            />
                           </BarChart>
                         </ResponsiveContainer>
                       </div>
@@ -549,10 +662,11 @@ function App() {
                   </div>
 
                   {/* Organizations Chart */}
-                  <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-100 flex flex-col">
+                  <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-100 flex flex-col relative group">
                     <h3 className="text-lg font-bold text-slate-800 mb-6 flex items-center gap-2">
-                      <Crosshair className="text-emerald-500" size={20} /> שיוך מבצעי בארגוני הצלה
+                      <Crosshair className="text-emerald-500" size={20} /> שיוך בארגוני הצלה
                     </h3>
+                    <p className="text-xs text-blue-500 absolute top-6 left-6 opacity-0 group-hover:opacity-100 transition-opacity">לחץ לסינון</p>
                     {stats.orgsData.length > 0 ? (
                       <div className="h-64 w-full flex-grow" dir="ltr">
                         <ResponsiveContainer width="100%" height="100%">
@@ -566,6 +680,8 @@ function App() {
                               dataKey="ערך"
                               nameKey="name"
                               label={({name, value}) => `${name}: ${value}`}
+                              onClick={(entry) => handleDrillDown('organization', entry.name || '')}
+                              className="cursor-pointer"
                             >
                               {stats.orgsData.map((_, index) => (
                                 <Cell key={`cell-${index}`} fill={['#ef4444', '#f97316', '#10b981', '#8b5cf6'][index % 4]} />
@@ -607,81 +723,94 @@ function App() {
                     <div className="mt-4 pt-4 border-t border-slate-100 flex items-center gap-3">
                       <div className="p-2 bg-indigo-50 text-indigo-600 rounded-lg"><Award size={20} /></div>
                       <div>
-                        <p className="text-sm text-slate-500 font-medium">כשירות רפואית פעילה (ACLS / פעילים)</p>
-                        <p className="text-xl font-bold text-slate-800">{stats.aclsOrActiveCount} <span className="text-sm font-normal text-slate-500">אנשי צוות מוכשרים</span></p>
+                        <p className="text-sm text-slate-500 font-medium">כשירות רפואית פעילה (ACLS)</p>
+                        <p className="text-xl font-bold text-slate-800">{stats.aclsOrActiveCount} <span className="text-sm font-normal text-slate-500">מוכשרים</span></p>
                       </div>
                     </div>
                   </div>
                 </div>
               </div>
               
-              {/* Data Table with Pagination */}
-              <div className="bg-white rounded-2xl shadow-sm border border-slate-100 overflow-hidden mt-12" data-html2canvas-ignore="true">
-                 <div className="p-6 border-b border-slate-100 flex justify-between items-center">
+              {/* Data Table with Pagination & Drilldown State */}
+              <div id="data-table" className="bg-white rounded-2xl shadow-sm border border-slate-100 overflow-hidden mt-12 scroll-mt-24" data-html2canvas-ignore="true">
+                 <div className="p-6 border-b border-slate-100 flex flex-wrap gap-4 justify-between items-center bg-slate-50">
                    <h3 className="text-lg font-bold text-slate-800 flex items-center gap-2">
-                     <FileText className="text-slate-500" size={20} /> נתונים גולמיים
+                     <FileText className="text-slate-500" size={20} /> רשימת כוח אדם
                    </h3>
-                   <span className="text-sm bg-slate-100 text-slate-600 px-3 py-1 rounded-full font-medium">
-                     סה"כ {filteredData.length} רשומות
+                   
+                   {drillDown && (
+                     <div className="flex items-center gap-2 bg-blue-600 text-white px-4 py-2 rounded-full text-sm font-bold shadow-sm animate-in zoom-in duration-300">
+                       מציג תוצאות עבור: {drillDown.value}
+                       <button onClick={() => setDrillDown(null)} className="hover:text-red-200 ml-2 transition-colors"><XCircle size={18} /></button>
+                     </div>
+                   )}
+
+                   <span className="text-sm bg-white border border-slate-200 text-slate-600 px-4 py-2 rounded-full font-bold shadow-sm">
+                     סה"כ {tableData.length} רשומות
                    </span>
                  </div>
                  
                  <div className="overflow-x-auto">
                    <table className="w-full text-right text-sm">
-                     <thead className="bg-slate-50 text-slate-500">
+                     <thead className="bg-white text-slate-500 border-b border-slate-100">
                        <tr>
-                         <th className="px-6 py-4 font-medium">שם / זיהוי (חלקי)</th>
-                         <th className="px-6 py-4 font-medium">יישוב</th>
-                         <th className="px-6 py-4 font-medium">הכשרה רפואית</th>
-                         <th className="px-6 py-4 font-medium">זמינות בחירום</th>
-                         <th className="px-6 py-4 font-medium">מרותק למקום עבודה</th>
+                         <th className="px-6 py-4 font-bold text-slate-700">שם מלא</th>
+                         <th className="px-6 py-4 font-bold text-slate-700">טלפון / נייד</th>
+                         <th className="px-6 py-4 font-bold text-slate-700">יישוב</th>
+                         <th className="px-6 py-4 font-bold text-slate-700">הכשרה רפואית</th>
+                         <th className="px-6 py-4 font-bold text-slate-700">זמינות בחירום</th>
                        </tr>
                      </thead>
-                     <tbody className="divide-y divide-slate-100">
-                       {currentTableData.map((row, idx) => (
+                     <tbody className="divide-y divide-slate-50 bg-white">
+                       {currentTableData.length > 0 ? currentTableData.map((row, idx) => (
                          <tr key={idx} className="hover:bg-slate-50 transition-colors">
-                           <td className="px-6 py-4 text-slate-800 font-medium">
-                             {getCol(row, ['שם', 'זיהוי']) || `רשומה #${(currentPage - 1) * rowsPerPage + idx + 1}`}
+                           <td className="px-6 py-4 text-slate-800 font-bold">
+                             {getName(row)}
                            </td>
-                           <td className="px-6 py-4 text-slate-600">{getCol(row, ['יישוב', 'ישוב'])}</td>
-                           <td className="px-6 py-4 text-slate-600">{getCol(row, ['הכשרה', 'מקצוע', 'רופא', 'פרמדיק', 'אח', 'חובש', 'מע"ר'])}</td>
+                           <td className="px-6 py-4 text-blue-600 font-medium" dir="ltr">
+                             {getCol(row, ['טלפון', 'נייד', 'phone', 'mobile']) || '-'}
+                           </td>
+                           <td className="px-6 py-4 text-slate-600 font-medium">{getCol(row, ['יישוב', 'ישוב'])}</td>
+                           <td className="px-6 py-4 text-slate-600">
+                             {getCol(row, ['הכשרה', 'מקצוע', 'רופא', 'פרמדיק', 'אח', 'חובש', 'מע"ר']) || 'לא הוגדר'}
+                           </td>
                            <td className="px-6 py-4">
-                             <span className="inline-flex items-center justify-center bg-amber-100 text-amber-700 w-8 h-8 rounded-full font-bold">
+                             <span className={`inline-flex items-center justify-center w-8 h-8 rounded-full font-bold ${
+                               ['4','5'].includes(getCol(row, ['זמינות'])) ? 'bg-emerald-100 text-emerald-700' : 'bg-amber-100 text-amber-700'
+                             }`}>
                                {getCol(row, ['זמינות']) || '-'}
                              </span>
                            </td>
-                           <td className="px-6 py-4 text-slate-600">
-                             {getCol(row, ['מרותק'])?.includes('כן') || getCol(row, ['מרותק']) === '1' ? 
-                               <span className="text-red-500 font-medium">כן</span> : 
-                               <span className="text-emerald-500 font-medium">לא</span>
-                             }
-                           </td>
                          </tr>
-                       ))}
+                       )) : (
+                         <tr>
+                           <td colSpan={5} className="px-6 py-12 text-center text-slate-500 font-medium">לא נמצאו רשומות בחיתוך זה</td>
+                         </tr>
+                       )}
                      </tbody>
                    </table>
                  </div>
                  
                  {/* Pagination Controls */}
                  {totalPages > 1 && (
-                   <div className="flex items-center justify-between px-6 py-4 border-t border-slate-100 bg-slate-50">
+                   <div className="flex items-center justify-between px-6 py-4 border-t border-slate-100 bg-white">
                      <button 
                        onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
                        disabled={currentPage === 1}
-                       className="flex items-center gap-1 px-4 py-2 rounded-lg font-medium text-slate-600 hover:bg-slate-200 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                       className="flex items-center gap-1 px-4 py-2 rounded-lg font-medium text-slate-600 hover:bg-slate-100 disabled:opacity-50 disabled:cursor-not-allowed transition-colors border border-slate-200"
                      >
                        <ChevronRight size={18} />
                        הקודם
                      </button>
                      
-                     <span className="text-sm font-medium text-slate-600">
+                     <span className="text-sm font-bold text-slate-700">
                        עמוד {currentPage} מתוך {totalPages}
                      </span>
                      
                      <button 
                        onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
                        disabled={currentPage === totalPages}
-                       className="flex items-center gap-1 px-4 py-2 rounded-lg font-medium text-slate-600 hover:bg-slate-200 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                       className="flex items-center gap-1 px-4 py-2 rounded-lg font-medium text-slate-600 hover:bg-slate-100 disabled:opacity-50 disabled:cursor-not-allowed transition-colors border border-slate-200"
                      >
                        הבא
                        <ChevronLeft size={18} />
