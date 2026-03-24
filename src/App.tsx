@@ -211,12 +211,10 @@ function App() {
           return false;
         case 'active_ready': {
           const aclsDate = getCol(row, ['acls', 'ACLS', 'מבחן']);
-          const activityStatus = getCol(row, ['הגדרת פעילות', 'הגדרת הפעילות']);
           const aclsStr = String(aclsDate).trim().toLowerCase();
           const hasValidAcls = aclsStr !== '' && aclsStr !== 'לא' && aclsStr !== 'אין' && aclsStr !== '-';
           
           if (roleCat === 'פרמדיקים' && hasValidAcls) return true;
-          if (roleCat === 'חובשים/מע"רים' && activityStatus.includes('פעיל') && !activityStatus.includes('לא פעיל') && !activityStatus.includes('שאינו פעיל')) return true;
           return false;
         }
         case 'specialty':
@@ -318,18 +316,14 @@ function App() {
          else if (rowString.includes('צה"ל') || rowString.includes('צבא') || rowString.includes('צבאית')) orgsCount['צה"ל']++;
          else orgsCount['אחר / לא שויך']++; 
       }
-// ACLS / Active - Strict match
+// ACLS - Paramedics Only (Strict match)
 const aclsDate = getCol(row, ['acls', 'ACLS', 'מבחן']);
-const activityStatus = getCol(row, ['הגדרת פעילות', 'הגדרת הפעילות']);
 const aclsStr = String(aclsDate).trim().toLowerCase();
 const hasValidAcls = aclsStr !== '' && aclsStr !== 'לא' && aclsStr !== 'אין' && aclsStr !== '-';
 
 if (roleCat === 'פרמדיקים' && hasValidAcls) {
    aclsOrActiveCount++;
-} else if (roleCat === 'חובשים/מע"רים' && activityStatus.includes('פעיל') && !activityStatus.includes('לא פעיל') && !activityStatus.includes('שאינו פעיל')) {
-   aclsOrActiveCount++;
-}
-    });
+}    });
 
     const settlementsData = Object.keys(settlementsCount)
       .map(name => ({ name, ערך: settlementsCount[name] }))
@@ -754,13 +748,13 @@ if (roleCat === 'פרמדיקים' && hasValidAcls) {
                     </div>
                     
                     <div 
-                      onClick={() => handleDrillDown('active_ready', 'פעילים ומוכשרים (ACLS)')}
+                      onClick={() => handleDrillDown('active_ready', 'פראמדיקים מוכשרים (ACLS)')}
                       className={`mt-4 pt-4 border-t border-slate-100 flex items-center gap-3 cursor-pointer group transition-colors p-2 -mx-2 rounded-xl ${drillDown?.type === 'active_ready' ? 'bg-blue-50 ring-1 ring-blue-200' : 'hover:bg-slate-50'}`}
                     >
                       <div className="p-2 bg-indigo-50 text-indigo-600 rounded-lg group-hover:bg-indigo-100 transition-colors"><Award size={20} /></div>
                       <div>
-                        <p className="text-sm text-slate-500 font-medium group-hover:text-blue-600 transition-colors">כשירות רפואית פעילה (ACLS)</p>
-                        <p className="text-xl font-bold text-slate-800">{stats.aclsOrActiveCount} <span className="text-sm font-normal text-slate-500">מוכשרים (לחץ לפירוט)</span></p>
+                        <p className="text-sm text-slate-500 font-medium group-hover:text-blue-600 transition-colors">פראמדיקים מוכשרים (ACLS)</p>
+                        <p className="text-xl font-bold text-slate-800">{stats.aclsOrActiveCount} <span className="text-sm font-normal text-slate-500">אנשי צוות (לחץ לפירוט)</span></p>
                       </div>
                     </div>
                   </div>
