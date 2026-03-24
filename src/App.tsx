@@ -204,6 +204,13 @@ function App() {
           if (drillDown.value === 'איחוד הצלה') return rowString.includes('איחוד');
           if (drillDown.value === 'צה"ל') return rowString.includes('צה"ל') || rowString.includes('צבא') || rowString.includes('צבאית');
           return !rowString.includes('מד"א') && !rowString.includes('מגן דוד') && !rowString.includes('איחוד') && !rowString.includes('צה"ל') && !rowString.includes('צבא');
+        case 'constraint':
+          const constraints = getCol(row, ['אילוצ', 'כוננות', 'מילואים']);
+          if (drillDown.value === 'כיתת כוננות') return constraints.includes('כוננות') || rowString.includes('כוננות');
+          if (drillDown.value === 'מילואים') return constraints.includes('מילואים') || rowString.includes('מילואים');
+          return false;
+        case 'active_ready':
+          return rowString.includes('acls') || (rowString.includes('פעיל') && !rowString.includes('לא פעיל') && !rowString.includes('שאינו פעיל'));
         case 'specialty':
           if (roleCat !== 'רופאים') return false;
           const isTrauma = rowString.includes('טראומה') || rowString.includes('נמרץ') || rowString.includes('כירורגי') || rowString.includes('הרדמה') || rowString.includes('אורתופדיה');
@@ -715,7 +722,14 @@ function App() {
                               <XAxis type="number" />
                               <YAxis dataKey="name" type="category" width={80} tick={{fontSize: 12, fill: '#475569'}} />
                               <Tooltip cursor={{fill: '#f1f5f9'}} />
-                              <Bar dataKey="ערך" fill="#f59e0b" radius={[0, 4, 4, 0]} barSize={24} />
+                              <Bar 
+                                dataKey="ערך" 
+                                fill="#f59e0b" 
+                                radius={[0, 4, 4, 0]} 
+                                barSize={24} 
+                                onClick={(data) => handleDrillDown('constraint', data.name || '')}
+                                className="cursor-pointer hover:opacity-80"
+                              />
                             </BarChart>
                           </ResponsiveContainer>
                         </div>
@@ -724,11 +738,14 @@ function App() {
                       )}
                     </div>
                     
-                    <div className="mt-4 pt-4 border-t border-slate-100 flex items-center gap-3">
-                      <div className="p-2 bg-indigo-50 text-indigo-600 rounded-lg"><Award size={20} /></div>
+                    <div 
+                      onClick={() => handleDrillDown('active_ready', 'פעילים ומוכשרים (ACLS)')}
+                      className={`mt-4 pt-4 border-t border-slate-100 flex items-center gap-3 cursor-pointer group transition-colors p-2 -mx-2 rounded-xl ${drillDown?.type === 'active_ready' ? 'bg-blue-50 ring-1 ring-blue-200' : 'hover:bg-slate-50'}`}
+                    >
+                      <div className="p-2 bg-indigo-50 text-indigo-600 rounded-lg group-hover:bg-indigo-100 transition-colors"><Award size={20} /></div>
                       <div>
-                        <p className="text-sm text-slate-500 font-medium">כשירות רפואית פעילה (ACLS)</p>
-                        <p className="text-xl font-bold text-slate-800">{stats.aclsOrActiveCount} <span className="text-sm font-normal text-slate-500">מוכשרים</span></p>
+                        <p className="text-sm text-slate-500 font-medium group-hover:text-blue-600 transition-colors">כשירות רפואית פעילה (ACLS)</p>
+                        <p className="text-xl font-bold text-slate-800">{stats.aclsOrActiveCount} <span className="text-sm font-normal text-slate-500">מוכשרים (לחץ לפירוט)</span></p>
                       </div>
                     </div>
                   </div>
