@@ -33,9 +33,13 @@ function App() {
   // Row Detail Modal State
   const [selectedRowData, setSelectedRowData] = useState<any | null>(null);
 
-  // Pagination State
+  // Pagination State (Table)
   const [currentPage, setCurrentPage] = useState(1);
   const rowsPerPage = 15;
+
+  // Pagination State (Settlements Chart)
+  const [settlementsPage, setSettlementsPage] = useState(0);
+  const settlementsPerPage = 10;
 
   const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -240,6 +244,11 @@ function App() {
     setCurrentPage(1);
   }, [tableData]);
 
+  // Reset settlement chart page when filters change
+  useEffect(() => {
+    setSettlementsPage(0);
+  }, [filteredData]);
+
   // Compute stats based on FILTERED data (Not drilled down data, stats stay stable!)
   const stats = useMemo(() => {
     if (!filteredData.length && !data.length) return null;
@@ -316,19 +325,20 @@ function App() {
          else if (rowString.includes('צה"ל') || rowString.includes('צבא') || rowString.includes('צבאית')) orgsCount['צה"ל']++;
          else orgsCount['אחר / לא שויך']++; 
       }
-// ACLS - Paramedics Only (Strict match)
-const aclsDate = getCol(row, ['acls', 'ACLS', 'מבחן']);
-const aclsStr = String(aclsDate).trim().toLowerCase();
-const hasValidAcls = aclsStr !== '' && aclsStr !== 'לא' && aclsStr !== 'אין' && aclsStr !== '-';
 
-if (roleCat === 'פרמדיקים' && hasValidAcls) {
-   aclsOrActiveCount++;
-}    });
+      // ACLS - Paramedics Only (Strict match)
+      const aclsDate = getCol(row, ['acls', 'ACLS', 'מבחן']);
+      const aclsStr = String(aclsDate).trim().toLowerCase();
+      const hasValidAcls = aclsStr !== '' && aclsStr !== 'לא' && aclsStr !== 'אין' && aclsStr !== '-';
+      
+      if (roleCat === 'פרמדיקים' && hasValidAcls) {
+         aclsOrActiveCount++;
+      }
+    });
 
-    const settlementsData = Object.keys(settlementsCount)
+    const allSettlementsData = Object.keys(settlementsCount)
       .map(name => ({ name, ערך: settlementsCount[name] }))
-      .sort((a, b) => b.ערך - a.ערך)
-      .slice(0, 10);
+      .sort((a, b) => b.ערך - a.ערך);
 
     const rolesData = Object.keys(rolesCount)
       .map(name => ({ name, ערך: rolesCount[name] }))
@@ -352,7 +362,7 @@ if (roleCat === 'פרמדיקים' && hasValidAcls) {
       boundToWorkplace,
       highAvailability,
       missingEquipment,
-      settlementsData,
+      allSettlementsData,
       rolesData,
       availabilityData,
       equipmentData,
@@ -559,12 +569,12 @@ if (roleCat === 'פרמדיקים' && hasValidAcls) {
               {/* General Charts Section */}
               <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
                 {/* Professions Pie Chart */}
-                <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-100 relative group">
+                <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-100 relative group flex flex-col">
                   <h3 className="text-lg font-bold text-slate-800 mb-6 flex items-center gap-2">
                     <Stethoscope className="text-blue-500" size={20} /> פילוח לפי הכשרה רפואית
                   </h3>
                   <p className="text-xs text-blue-500 absolute top-6 left-6 opacity-0 group-hover:opacity-100 transition-opacity">לחץ על פלח לסינון</p>
-                  <div className="h-80 w-full" dir="ltr">
+                  <div className="h-80 w-full flex-grow" dir="ltr">
                     <ResponsiveContainer width="100%" height="100%">
                       <PieChart>
                         <Pie
@@ -590,39 +600,72 @@ if (roleCat === 'פרמדיקים' && hasValidAcls) {
                   </div>
                 </div>
 
-                {/* Settlements Bar Chart */}
-                <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-100 relative group">
-                  <h3 className="text-lg font-bold text-slate-800 mb-6 flex items-center gap-2">
-                    <MapPin className="text-emerald-500" size={20} /> צוותים רפואיים לפי יישוב (טופ 10)
-                  </h3>
-                  <p className="text-xs text-blue-500 absolute top-6 left-6 opacity-0 group-hover:opacity-100 transition-opacity">לחץ על עמודה לסינון</p>
-                  <div className="h-80 w-full" dir="ltr">
-                    <ResponsiveContainer width="100%" height="100%">
-                      <BarChart data={stats.settlementsData} layout="vertical" margin={{ top: 5, right: 30, left: 40, bottom: 5 }}>
-                        <CartesianGrid strokeDasharray="3 3" horizontal={false} />
-                        <XAxis type="number" />
-                        <YAxis dataKey="name" type="category" width={80} tick={{fontSize: 12, fill: '#475569'}} />
-                        <Tooltip cursor={{fill: '#f1f5f9'}} />
-                        <Bar 
-                          dataKey="ערך" 
-                          fill="#10b981" 
-                          radius={[0, 4, 4, 0]} 
-                          barSize={24} 
-                          onClick={(data) => handleDrillDown('settlement', data.name || '')}
-                          className="cursor-pointer hover:opacity-80"
-                        />
-                      </BarChart>
-                    </ResponsiveContainer>
+                {/* Settlements Bar Chart (Paginated) */}
+                <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-100 relative group flex flex-col">
+                  <div className="flex justify-between items-start mb-6">
+                    <h3 className="text-lg font-bold text-slate-800 flex items-center gap-2">
+                      <MapPin className="text-emerald-500" size={20} /> צוותים רפואיים לפי יישוב
+                    </h3>
+                    
+                    {stats.allSettlementsData.length > settlementsPerPage && (
+                      <div className="flex items-center gap-1 bg-slate-50 rounded-lg p-1 border border-slate-100 shadow-sm" dir="ltr">
+                        <button 
+                          onClick={() => setSettlementsPage(p => Math.max(0, p - 1))}
+                          disabled={settlementsPage === 0}
+                          className="p-1.5 rounded-md text-slate-500 hover:bg-white hover:text-slate-800 disabled:opacity-30 disabled:hover:bg-transparent disabled:cursor-not-allowed transition-all"
+                        >
+                          <ChevronLeft size={16} />
+                        </button>
+                        <span className="text-xs font-bold text-slate-600 px-2" dir="rtl">
+                          מציג {Math.min((settlementsPage + 1) * settlementsPerPage, stats.allSettlementsData.length)} / {stats.allSettlementsData.length}
+                        </span>
+                        <button 
+                          onClick={() => setSettlementsPage(p => (p + 1) * settlementsPerPage < stats.allSettlementsData.length ? p + 1 : p)}
+                          disabled={(settlementsPage + 1) * settlementsPerPage >= stats.allSettlementsData.length}
+                          className="p-1.5 rounded-md text-slate-500 hover:bg-white hover:text-slate-800 disabled:opacity-30 disabled:hover:bg-transparent disabled:cursor-not-allowed transition-all"
+                        >
+                          <ChevronRight size={16} />
+                        </button>
+                      </div>
+                    )}
                   </div>
+
+                  {stats.allSettlementsData.length > 0 ? (
+                    <div className="h-80 w-full flex-grow relative" dir="ltr">
+                      <p className="text-xs text-blue-500 absolute top-0 right-0 z-10 opacity-0 group-hover:opacity-100 transition-opacity">לחץ על עמודה לסינון</p>
+                      <ResponsiveContainer width="100%" height="100%">
+                        <BarChart 
+                          data={stats.allSettlementsData.slice(settlementsPage * settlementsPerPage, (settlementsPage + 1) * settlementsPerPage)} 
+                          layout="vertical" 
+                          margin={{ top: 5, right: 30, left: 50, bottom: 5 }}
+                        >
+                          <CartesianGrid strokeDasharray="3 3" horizontal={false} />
+                          <XAxis type="number" />
+                          <YAxis dataKey="name" type="category" width={90} tick={{fontSize: 12, fill: '#475569'}} />
+                          <Tooltip cursor={{fill: '#f1f5f9'}} />
+                          <Bar 
+                            dataKey="ערך" 
+                            fill="#10b981" 
+                            radius={[0, 4, 4, 0]} 
+                            barSize={24} 
+                            onClick={(data) => handleDrillDown('settlement', data.name || '')}
+                            className="cursor-pointer hover:opacity-80 transition-opacity"
+                          />
+                        </BarChart>
+                      </ResponsiveContainer>
+                    </div>
+                  ) : (
+                    <div className="flex-grow flex items-center justify-center text-slate-400 text-sm">אין נתונים זמינים</div>
+                  )}
                 </div>
                 
                 {/* Availability Chart */}
-                <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-100 relative group lg:col-span-2">
+                <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-100 relative group lg:col-span-2 flex flex-col">
                   <h3 className="text-lg font-bold text-slate-800 mb-6 flex items-center gap-2">
-                    <AlertCircle className="text-amber-500" size={20} /> רמת זמינות (1 = לא זמין, 5 = זמין מיידית)
+                    <AlertCircle className="text-amber-500" size={20} /> רמת זמינות בחירום (1 = לא זמין כלל, 5 = זמין מיידית)
                   </h3>
                   <p className="text-xs text-blue-500 absolute top-6 left-6 opacity-0 group-hover:opacity-100 transition-opacity">לחץ על עמודה לסינון</p>
-                  <div className="h-64 w-full" dir="ltr">
+                  <div className="h-64 w-full flex-grow" dir="ltr">
                     <ResponsiveContainer width="100%" height="100%">
                       <BarChart data={stats.availabilityData}>
                         <CartesianGrid strokeDasharray="3 3" vertical={false} />
@@ -719,7 +762,7 @@ if (roleCat === 'פרמדיקים' && hasValidAcls) {
 
                   {/* Constraints & Readiness Chart */}
                   <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-100 flex flex-col justify-between">
-                    <div>
+                    <div className="relative group">
                       <h3 className="text-lg font-bold text-slate-800 mb-6 flex items-center gap-2">
                         <AlertTriangle className="text-amber-500" size={20} /> אילוצים מיוחדים
                       </h3>
