@@ -9,7 +9,8 @@ import {
 import { 
   UploadCloud, Users, Activity, Briefcase, Stethoscope, 
   MapPin, AlertCircle, ShieldAlert, HeartPulse, FileText, Filter, XCircle,
-  ChevronRight, ChevronLeft, AlertTriangle, Siren, Crosshair, Award, Download
+  ChevronRight, ChevronLeft, AlertTriangle, Siren, Crosshair, Award, Download,
+  X, User
 } from 'lucide-react';
 
 const COLORS = ['#3b82f6', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6', '#14b8a6', '#f97316'];
@@ -28,6 +29,9 @@ function App() {
 
   // Drill-down State
   const [drillDown, setDrillDown] = useState<{type: string, value: string} | null>(null);
+  
+  // Row Detail Modal State
+  const [selectedRowData, setSelectedRowData] = useState<any | null>(null);
 
   // Pagination State
   const [currentPage, setCurrentPage] = useState(1);
@@ -357,7 +361,7 @@ function App() {
       
       {onClick && (
         <div className="absolute bottom-0 left-0 w-full bg-blue-50 py-1 text-center translate-y-full group-hover:translate-y-0 transition-transform duration-300">
-          <span className="text-xs text-blue-600 font-bold">לחץ לצפייה ברשומות 👇</span>
+          <span className="text-xs text-blue-600 font-bold">לחץ לסינון הרשומות 👇</span>
         </div>
       )}
     </div>
@@ -595,7 +599,7 @@ function App() {
                     </ResponsiveContainer>
                   </div>
                 </div>
-
+                
                 {/* Availability Chart */}
                 <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-100 relative group lg:col-span-2">
                   <h3 className="text-lg font-bold text-slate-800 mb-6 flex items-center gap-2">
@@ -735,7 +739,7 @@ function App() {
               <div id="data-table" className="bg-white rounded-2xl shadow-sm border border-slate-100 overflow-hidden mt-12 scroll-mt-24" data-html2canvas-ignore="true">
                  <div className="p-6 border-b border-slate-100 flex flex-wrap gap-4 justify-between items-center bg-slate-50">
                    <h3 className="text-lg font-bold text-slate-800 flex items-center gap-2">
-                     <FileText className="text-slate-500" size={20} /> רשימת כוח אדם
+                     <FileText className="text-slate-500" size={20} /> רשימת כוח אדם <span className="text-xs font-normal text-blue-500 mr-2">(לחץ על רשומה כדי לראות את כרטיס המידע המלא)</span>
                    </h3>
                    
                    {drillDown && (
@@ -763,8 +767,12 @@ function App() {
                      </thead>
                      <tbody className="divide-y divide-slate-50 bg-white">
                        {currentTableData.length > 0 ? currentTableData.map((row, idx) => (
-                         <tr key={idx} className="hover:bg-slate-50 transition-colors">
-                           <td className="px-6 py-4 text-slate-800 font-bold">
+                         <tr 
+                           key={idx} 
+                           onClick={() => setSelectedRowData(row)}
+                           className="hover:bg-blue-50 transition-colors cursor-pointer group"
+                         >
+                           <td className="px-6 py-4 text-slate-800 font-bold group-hover:text-blue-700 transition-colors">
                              {getName(row)}
                            </td>
                            <td className="px-6 py-4 text-blue-600 font-medium" dir="ltr">
@@ -823,6 +831,61 @@ function App() {
 
         </div>
       )}
+
+      {/* Row Detail Modal (Smart View) */}
+      {selectedRowData && (
+        <div 
+          className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-900/60 p-4 backdrop-blur-sm transition-opacity" 
+          onClick={() => setSelectedRowData(null)}
+          dir="rtl"
+        >
+          <div 
+            className="bg-white rounded-2xl shadow-2xl w-full max-w-2xl max-h-[85vh] overflow-hidden flex flex-col animate-in zoom-in-95 duration-200"
+            onClick={e => e.stopPropagation()}
+          >
+            <div className="p-6 border-b border-slate-100 flex justify-between items-center bg-slate-50">
+              <h2 className="text-xl font-bold text-slate-800 flex items-center gap-3">
+                <div className="p-2 bg-blue-100 text-blue-600 rounded-full"><User size={24} /></div>
+                כרטיס מידע אישי: {getName(selectedRowData)}
+              </h2>
+              <button 
+                onClick={() => setSelectedRowData(null)} 
+                className="p-2 hover:bg-slate-200 rounded-full text-slate-500 transition-colors"
+              >
+                <X size={20} />
+              </button>
+            </div>
+            
+            <div className="p-6 overflow-y-auto">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-x-8 gap-y-6">
+                {Object.entries(selectedRowData).map(([key, value]) => {
+                  if (value === '' || value === null || value === undefined) return null;
+                  
+                  // Make headers look nicer
+                  const isLongText = String(value).length > 50;
+                  
+                  return (
+                    <div key={key} className={`border-b border-slate-100 pb-3 ${isLongText ? 'md:col-span-2' : ''}`}>
+                      <p className="text-xs font-bold text-slate-400 mb-1">{key}</p>
+                      <p className="text-sm text-slate-800 font-medium" dir="auto">{String(value)}</p>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+            
+            <div className="p-4 bg-slate-50 border-t border-slate-100 flex justify-end gap-3">
+              <button 
+                onClick={() => setSelectedRowData(null)}
+                className="bg-slate-800 hover:bg-slate-900 text-white px-6 py-2 rounded-lg font-bold transition-colors shadow-sm"
+              >
+                סגור כרטיס
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+      
     </div>
   );
 }
