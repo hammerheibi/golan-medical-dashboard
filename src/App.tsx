@@ -122,7 +122,7 @@ function App() {
     if (!rawRole) return 'אחר/לא מוגדר';
     if (rawRole.includes('רופא')) return 'רופאים';
     if (rawRole.includes('פרמדיק') || rawRole.includes('פראמדיק')) return 'פרמדיקים';
-    if (rawRole.includes('אח ') || rawRole.includes('אחות') || rawRole.includes('אחים')) return 'אחים/אחיות';
+    if (rawRole.includes('אח/ות') || rawRole.includes('אחות') || rawRole.includes('אחים') || rawRole === 'אח' || rawRole.includes('אח ')) return 'אחים/אחיות';
     if (rawRole.includes('חובש') || rawRole.includes('מע"ר') || rawRole.includes('עזרה ראשונה') || rawRole.includes('מגיש')) return 'חובשים/מע"רים';
     return 'אחר/לא מוגדר';
   };
