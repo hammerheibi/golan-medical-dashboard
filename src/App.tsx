@@ -10,7 +10,7 @@ import {
   UploadCloud, Users, Activity, Briefcase, Stethoscope, 
   MapPin, AlertCircle, ShieldAlert, HeartPulse, FileText, Filter, XCircle,
   ChevronRight, ChevronLeft, AlertTriangle, Siren, Crosshair, Award, Download,
-  X, User
+  X, User, Moon, Sun
 } from 'lucide-react';
 
 const COLORS = ['#3b82f6', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6', '#14b8a6', '#f97316'];
@@ -20,6 +20,7 @@ function App() {
   const [fileName, setFileName] = useState<string>('');
   const [loading, setLoading] = useState(false);
   const [isExporting, setIsExporting] = useState(false);
+  const [isDarkMode, setIsDarkMode] = useState(false);
 
   // Filters State
   const [filterSettlement, setFilterSettlement] = useState<string>('all');
@@ -40,6 +41,14 @@ function App() {
   // Pagination State (Settlements Chart)
   const [settlementsPage, setSettlementsPage] = useState(0);
   const settlementsPerPage = 10;
+
+  useEffect(() => {
+    if (isDarkMode) {
+      document.documentElement.classList.add('dark');
+    } else {
+      document.documentElement.classList.remove('dark');
+    }
+  }, [isDarkMode]);
 
   const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -91,7 +100,7 @@ function App() {
     
     setIsExporting(true);
     try {
-      const canvas = await html2canvas(element, { scale: 2, useCORS: true });
+      const canvas = await html2canvas(element, { scale: 2, useCORS: true, backgroundColor: isDarkMode ? '#0f172a' : '#f8fafc' });
       const imgData = canvas.toDataURL('image/png');
       
       const pdf = new jsPDF('p', 'px', [canvas.width, canvas.height]);
@@ -135,7 +144,6 @@ function App() {
     return (val.includes('כן') || val === '1' || val === 'True') ? 'yes' : 'no';
   };
 
-  // Extract unique options for filters
   const filterOptions = useMemo(() => {
     if (!data.length) return { settlements: [], roles: [], availabilities: [] };
     
@@ -161,7 +169,6 @@ function App() {
     };
   }, [data]);
 
-  // Apply filters to data (Main top filters)
   const filteredData = useMemo(() => {
     return data.filter(row => {
       const s = getCol(row, ['יישוב', 'ישוב']);
@@ -178,7 +185,6 @@ function App() {
     });
   }, [data, filterSettlement, filterRole, filterAvailability, filterAssigned]);
 
-  // Apply Drill-down to filtered data for the Table
   const tableData = useMemo(() => {
     if (!drillDown) return filteredData;
     return filteredData.filter(row => {
@@ -217,7 +223,6 @@ function App() {
           const aclsDate = getCol(row, ['acls', 'ACLS', 'מבחן']);
           const aclsStr = String(aclsDate).trim().toLowerCase();
           const hasValidAcls = aclsStr !== '' && aclsStr !== 'לא' && aclsStr !== 'אין' && aclsStr !== '-';
-          
           if (roleCat === 'פרמדיקים' && hasValidAcls) return true;
           return false;
         }
@@ -239,17 +244,9 @@ function App() {
     });
   }, [filteredData, drillDown]);
 
-  // Reset pagination when table data changes
-  useEffect(() => {
-    setCurrentPage(1);
-  }, [tableData]);
+  useEffect(() => { setCurrentPage(1); }, [tableData]);
+  useEffect(() => { setSettlementsPage(0); }, [filteredData]);
 
-  // Reset settlement chart page when filters change
-  useEffect(() => {
-    setSettlementsPage(0);
-  }, [filteredData]);
-
-  // Compute stats based on FILTERED data (Not drilled down data, stats stay stable!)
   const stats = useMemo(() => {
     if (!filteredData.length && !data.length) return null;
 
@@ -264,7 +261,6 @@ function App() {
     let missingEquipment = 0;
 
     let equipmentStatus = { 'יש תיק אישי': 0, 'אין תיק': 0 };
-    
     let specialtiesCount: Record<string, number> = {};
     let constraintsCount: Record<string, number> = { 'כיתת כוננות': 0, 'מילואים': 0 };
     let orgsCount: Record<string, number> = { 'מד"א': 0, 'איחוד הצלה': 0, 'צה"ל': 0, 'אחר / לא שויך': 0 };
@@ -272,7 +268,6 @@ function App() {
 
     filteredData.forEach(row => {
       const rowString = Object.values(row).join(' ').toLowerCase();
-
       const settlement = getCol(row, ['יישוב', 'ישוב']);
       if (settlement) settlementsCount[settlement] = (settlementsCount[settlement] || 0) + 1;
 
@@ -326,68 +321,52 @@ function App() {
          else orgsCount['אחר / לא שויך']++; 
       }
 
-      // ACLS - Paramedics Only (Strict match)
       const aclsDate = getCol(row, ['acls', 'ACLS', 'מבחן']);
       const aclsStr = String(aclsDate).trim().toLowerCase();
       const hasValidAcls = aclsStr !== '' && aclsStr !== 'לא' && aclsStr !== 'אין' && aclsStr !== '-';
-      
-      if (roleCat === 'פרמדיקים' && hasValidAcls) {
-         aclsOrActiveCount++;
-      }
+      if (roleCat === 'פרמדיקים' && hasValidAcls) aclsOrActiveCount++;
     });
 
     const allSettlementsData = Object.keys(settlementsCount)
       .map(name => ({ name, ערך: settlementsCount[name] }))
       .sort((a, b) => b.ערך - a.ערך);
 
-    const rolesData = Object.keys(rolesCount)
-      .map(name => ({ name, ערך: rolesCount[name] }))
-      .filter(item => item.ערך > 0);
-
-    const availabilityData = Object.keys(availabilityScores).map(score => ({
-      name: `רמה ${score}`, ערך: availabilityScores[score]
-    }));
-
-    const equipmentData = Object.keys(equipmentStatus).map(name => ({
-      name, ערך: equipmentStatus[name as keyof typeof equipmentStatus]
-    }));
-
+    const rolesData = Object.keys(rolesCount).map(name => ({ name, ערך: rolesCount[name] })).filter(item => item.ערך > 0);
+    const availabilityData = Object.keys(availabilityScores).map(score => ({ name: `רמה ${score}`, ערך: availabilityScores[score] }));
+    const equipmentData = Object.keys(equipmentStatus).map(name => ({ name, ערך: equipmentStatus[name as keyof typeof equipmentStatus] }));
     const specData = Object.keys(specialtiesCount).map(k => ({ name: k, ערך: specialtiesCount[k] })).filter(item => item.ערך > 0);
     const orgsData = Object.keys(orgsCount).map(k => ({ name: k, ערך: orgsCount[k] })).filter(item => item.ערך > 0);
     const constData = Object.keys(constraintsCount).map(k => ({ name: k, ערך: constraintsCount[k] })).filter(item => item.ערך > 0);
 
     return {
-      totalPersonnel,
-      assignedToEmergency,
-      boundToWorkplace,
-      highAvailability,
-      missingEquipment,
-      allSettlementsData,
-      rolesData,
-      availabilityData,
-      equipmentData,
-      specData,
-      orgsData,
-      constData,
-      aclsOrActiveCount
+      totalPersonnel, assignedToEmergency, boundToWorkplace, highAvailability, missingEquipment,
+      allSettlementsData, rolesData, availabilityData, equipmentData, specData, orgsData, constData, aclsOrActiveCount
     };
   }, [filteredData, data.length]);
 
-  const Card = ({ title, value, icon, subtitle, colorClass = "bg-blue-50 text-blue-600", onClick, isSelected }: any) => (
+  const chartTextColor = isDarkMode ? '#cbd5e1' : '#475569';
+  const chartGridColor = isDarkMode ? '#334155' : '#e2e8f0';
+  const tooltipStyle = {
+    backgroundColor: isDarkMode ? '#1e293b' : '#ffffff',
+    borderColor: isDarkMode ? '#334155' : '#e2e8f0',
+    color: isDarkMode ? '#f8fafc' : '#0f172a'
+  };
+
+  const Card = ({ title, value, icon, subtitle, colorClass = "bg-blue-50 text-blue-600 dark:bg-blue-900/40 dark:text-blue-400", onClick, isSelected }: any) => (
     <div 
       onClick={onClick}
-      className={`group bg-white rounded-xl shadow-sm border ${isSelected ? 'border-blue-500 ring-2 ring-blue-200' : 'border-slate-100 hover:border-blue-300'} p-6 flex flex-col items-start transition-all ${onClick ? 'cursor-pointer hover:shadow-md' : ''} relative overflow-hidden`}
+      className={`group bg-white dark:bg-slate-900 rounded-xl shadow-sm border ${isSelected ? 'border-blue-500 ring-2 ring-blue-200 dark:ring-blue-900' : 'border-slate-100 dark:border-slate-800 hover:border-blue-300 dark:hover:border-blue-700'} p-6 flex flex-col items-start transition-all ${onClick ? 'cursor-pointer hover:shadow-md' : ''} relative overflow-hidden`}
     >
       <div className="flex items-center justify-between w-full mb-4">
-        <h3 className="text-slate-500 font-medium relative z-10">{title}</h3>
+        <h3 className="text-slate-500 dark:text-slate-400 font-medium relative z-10">{title}</h3>
         <div className={`p-2 rounded-lg ${colorClass} relative z-10`}>{icon}</div>
       </div>
-      <p className="text-3xl font-bold text-slate-800 relative z-10">{value}</p>
-      {subtitle && <p className="text-sm text-slate-400 mt-2 relative z-10">{subtitle}</p>}
+      <p className="text-3xl font-bold text-slate-800 dark:text-slate-100 relative z-10">{value}</p>
+      {subtitle && <p className="text-sm text-slate-400 dark:text-slate-500 mt-2 relative z-10">{subtitle}</p>}
       
       {onClick && (
-        <div className="absolute bottom-0 left-0 w-full bg-blue-50 py-1 text-center translate-y-full group-hover:translate-y-0 transition-transform duration-300">
-          <span className="text-xs text-blue-600 font-bold">לחץ לסינון הרשומות 👇</span>
+        <div className="absolute bottom-0 left-0 w-full bg-blue-50 dark:bg-blue-900/40 py-1 text-center translate-y-full group-hover:translate-y-0 transition-transform duration-300">
+          <span className="text-xs text-blue-600 dark:text-blue-400 font-bold">לחץ לסינון הרשומות 👇</span>
         </div>
       )}
     </div>
@@ -397,26 +376,34 @@ function App() {
   const currentTableData = tableData.slice((currentPage - 1) * rowsPerPage, currentPage * rowsPerPage);
 
   return (
-    <div className="min-h-screen bg-slate-50 p-8 font-sans" dir="rtl">
+    <div className="min-h-screen bg-slate-50 dark:bg-slate-950 p-8 font-sans transition-colors duration-300" dir="rtl">
       
       {/* Header */}
-      <header className="mb-8 flex flex-col md:flex-row justify-between items-center bg-white p-6 rounded-2xl shadow-sm border border-slate-100">
+      <header className="mb-8 flex flex-col md:flex-row justify-between items-center bg-white dark:bg-slate-900 p-6 rounded-2xl shadow-sm border border-slate-100 dark:border-slate-800 transition-colors duration-300">
         <div>
-          <h1 className="text-2xl font-bold text-slate-800 flex items-center gap-2">
+          <h1 className="text-2xl font-bold text-slate-800 dark:text-slate-100 flex items-center gap-2">
             <HeartPulse className="text-red-500" /> 
-            מועצה אזורית גולן - מיפוי כוח אדם רפואי בחירום
+            מועצה אזורית גולן - מיפוי כוח אדם בחירום - מכלול רפואה יישובי
           </h1>
-          <p className="text-slate-500 mt-1 text-sm">מערכת תמונת מצב רשותית - נתונים מאובטחים לוקאלית</p>
+          <p className="text-slate-500 dark:text-slate-400 mt-1 text-sm">מערכת תמונת מצב רשותית - נתונים מאובטחים לוקאלית</p>
         </div>
         
-        <div className="mt-4 md:mt-0 flex gap-3">
+        <div className="mt-4 md:mt-0 flex items-center gap-3">
+          <button
+            onClick={() => setIsDarkMode(!isDarkMode)}
+            className="p-3 rounded-xl border border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors"
+            title="החלף מצב תצוגה"
+          >
+            {isDarkMode ? <Sun size={20} /> : <Moon size={20} />}
+          </button>
+          
           {stats && (
             <button 
               onClick={downloadPDF}
               disabled={isExporting}
-              className="bg-white border border-slate-200 text-slate-700 hover:bg-slate-50 px-4 py-3 rounded-xl shadow-sm transition-all flex items-center gap-2 font-medium disabled:opacity-50"
+              className="bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-700 px-4 py-3 rounded-xl shadow-sm transition-all flex items-center gap-2 font-medium disabled:opacity-50"
             >
-              {isExporting ? <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-slate-700"></div> : <Download size={20} />}
+              {isExporting ? <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-slate-700 dark:border-slate-300"></div> : <Download size={20} />}
               ייצא ל-PDF
             </button>
           )}
@@ -439,17 +426,17 @@ function App() {
           <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600"></div>
         </div>
       ) : !stats ? (
-        <div className="bg-white rounded-2xl border border-dashed border-slate-300 h-96 flex flex-col justify-center items-center text-slate-400">
-          <UploadCloud size={64} className="mb-4 text-slate-300" />
-          <h2 className="text-xl font-medium mb-2">אנא העלה קובץ נתונים</h2>
+        <div className="bg-white dark:bg-slate-900 rounded-2xl border border-dashed border-slate-300 dark:border-slate-700 h-96 flex flex-col justify-center items-center text-slate-400 dark:text-slate-500 transition-colors duration-300">
+          <UploadCloud size={64} className="mb-4 text-slate-300 dark:text-slate-600" />
+          <h2 className="text-xl font-medium mb-2 text-slate-700 dark:text-slate-300">אנא העלה קובץ נתונים</h2>
           <p className="text-sm text-center max-w-md">העלה את קובץ האקסל המעודכן. הנתונים אינם נשמרים בשרת ומעובדים ישירות בדפדפן שלך בלבד, לשמירה על סודיות ופרטיות.</p>
         </div>
       ) : (
-        <div id="dashboard-content" className="space-y-6 bg-slate-50 p-2 -m-2 rounded-xl">
+        <div id="dashboard-content" className="space-y-6 bg-slate-50 dark:bg-slate-950 p-2 -m-2 rounded-xl transition-colors duration-300">
           
           {/* Filters Bar */}
-          <div className="bg-white p-4 rounded-xl shadow-sm border border-slate-200 flex flex-wrap items-center gap-4" data-html2canvas-ignore="true">
-             <div className="flex items-center gap-2 text-slate-700 font-bold ml-2">
+          <div className="bg-white dark:bg-slate-900 p-4 rounded-xl shadow-sm border border-slate-200 dark:border-slate-800 flex flex-wrap items-center gap-4 transition-colors" data-html2canvas-ignore="true">
+             <div className="flex items-center gap-2 text-slate-700 dark:text-slate-200 font-bold ml-2">
                <Filter size={18} />
                סינונים מתקדמים:
              </div>
@@ -457,7 +444,7 @@ function App() {
              <select 
                value={filterSettlement} 
                onChange={e => setFilterSettlement(e.target.value)}
-               className="bg-slate-50 border border-slate-200 text-slate-700 rounded-lg px-4 py-2 outline-none focus:ring-2 focus:ring-blue-500"
+               className="bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-200 rounded-lg px-4 py-2 outline-none focus:ring-2 focus:ring-blue-500"
              >
                <option value="all">כל היישובים</option>
                {filterOptions.settlements.map(s => <option key={s} value={s}>{s}</option>)}
@@ -466,7 +453,7 @@ function App() {
              <select 
                value={filterRole} 
                onChange={e => setFilterRole(e.target.value)}
-               className="bg-slate-50 border border-slate-200 text-slate-700 rounded-lg px-4 py-2 outline-none focus:ring-2 focus:ring-blue-500"
+               className="bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-200 rounded-lg px-4 py-2 outline-none focus:ring-2 focus:ring-blue-500"
              >
                <option value="all">כל ההכשרות</option>
                {filterOptions.roles.map(r => <option key={r} value={r}>{r}</option>)}
@@ -475,7 +462,7 @@ function App() {
              <select 
                value={filterAvailability} 
                onChange={e => setFilterAvailability(e.target.value)}
-               className="bg-slate-50 border border-slate-200 text-slate-700 rounded-lg px-4 py-2 outline-none focus:ring-2 focus:ring-blue-500"
+               className="bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-200 rounded-lg px-4 py-2 outline-none focus:ring-2 focus:ring-blue-500"
              >
                <option value="all">כל רמות הזמינות</option>
                {filterOptions.availabilities.map(a => <option key={a} value={a}>זמינות: {a}</option>)}
@@ -484,7 +471,7 @@ function App() {
              <select 
                value={filterAssigned} 
                onChange={e => setFilterAssigned(e.target.value)}
-               className="bg-slate-50 border border-slate-200 text-slate-700 rounded-lg px-4 py-2 outline-none focus:ring-2 focus:ring-blue-500"
+               className="bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-200 rounded-lg px-4 py-2 outline-none focus:ring-2 focus:ring-blue-500"
              >
                <option value="all">שיבוץ בחירום (הכל)</option>
                <option value="yes">שובצו למכלול</option>
@@ -495,7 +482,7 @@ function App() {
                onClick={clearFilters}
                className={`flex items-center gap-1 text-sm font-medium mr-auto px-3 py-2 rounded-lg transition-colors ${
                  filterSettlement !== 'all' || filterRole !== 'all' || filterAvailability !== 'all' || filterAssigned !== 'all' || drillDown !== null
-                 ? 'text-red-500 hover:text-red-700 bg-red-50' : 'text-slate-400 opacity-50 cursor-not-allowed'
+                 ? 'text-red-500 hover:text-red-700 dark:hover:text-red-400 bg-red-50 dark:bg-red-950/30' : 'text-slate-400 dark:text-slate-600 opacity-50 cursor-not-allowed'
                }`}
              >
                <XCircle size={16} /> נקה את כל הסינונים
@@ -503,7 +490,7 @@ function App() {
           </div>
 
           {filteredData.length === 0 ? (
-            <div className="bg-amber-50 text-amber-800 p-8 rounded-xl text-center border border-amber-200 font-medium">
+            <div className="bg-amber-50 dark:bg-amber-950/30 text-amber-800 dark:text-amber-400 p-8 rounded-xl text-center border border-amber-200 dark:border-amber-900 font-medium transition-colors">
               לא נמצאו תוצאות התואמות לסינון שבחרת. אנא שנה את הפילטרים.
             </div>
           ) : (
@@ -521,7 +508,7 @@ function App() {
                   title='שובצו למכלולים' 
                   value={stats.assignedToEmergency} 
                   icon={<ShieldAlert />} 
-                  colorClass="bg-indigo-50 text-indigo-600"
+                  colorClass="bg-indigo-50 text-indigo-600 dark:bg-indigo-900/40 dark:text-indigo-400"
                   subtitle={`${((stats.assignedToEmergency / stats.totalPersonnel) * 100).toFixed(1)}% מסך הצוות המוצג`} 
                   onClick={() => handleDrillDown('assigned', 'yes')}
                   isSelected={drillDown?.type === 'assigned' && drillDown?.value === 'yes'}
@@ -531,7 +518,7 @@ function App() {
                   title='מרותקים לעבודה' 
                   value={stats.boundToWorkplace} 
                   icon={<Activity />} 
-                  colorClass="bg-slate-100 text-slate-600"
+                  colorClass="bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-300"
                   subtitle="לא יהיו זמינים ביישוב" 
                   onClick={() => handleDrillDown('bound', 'yes')}
                   isSelected={drillDown?.type === 'bound' && drillDown?.value === 'yes'}
@@ -541,7 +528,7 @@ function App() {
                   title='מוכנות תיק אישי' 
                   value={stats.equipmentData.find((d:any) => d.name === 'יש תיק אישי')?.ערך || 0} 
                   icon={<Briefcase />} 
-                  colorClass="bg-emerald-50 text-emerald-600"
+                  colorClass="bg-emerald-50 text-emerald-600 dark:bg-emerald-900/40 dark:text-emerald-400"
                   subtitle="אנשי צוות מצוידים" 
                 />
 
@@ -549,7 +536,7 @@ function App() {
                   title='זמינות גבוהה (4-5)' 
                   value={stats.highAvailability} 
                   icon={<HeartPulse />} 
-                  colorClass="bg-amber-50 text-amber-600"
+                  colorClass="bg-amber-50 text-amber-600 dark:bg-amber-900/40 dark:text-amber-400"
                   subtitle={`${((stats.highAvailability / stats.totalPersonnel) * 100).toFixed(1)}% מהצוות זמינים מיידית`} 
                   onClick={() => handleDrillDown('high_availability', 'yes')}
                   isSelected={drillDown?.type === 'high_availability'}
@@ -559,7 +546,7 @@ function App() {
                   title='פער: חוסר בתיק' 
                   value={stats.missingEquipment} 
                   icon={<AlertTriangle />} 
-                  colorClass="bg-red-50 text-red-600"
+                  colorClass="bg-red-50 text-red-600 dark:bg-red-900/40 dark:text-red-400"
                   subtitle={`${((stats.missingEquipment / stats.totalPersonnel) * 100).toFixed(1)}% ללא ציוד אישי`} 
                   onClick={() => handleDrillDown('missing_equipment', 'yes')}
                   isSelected={drillDown?.type === 'missing_equipment'}
@@ -569,8 +556,8 @@ function App() {
               {/* General Charts Section */}
               <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
                 {/* Professions Pie Chart */}
-                <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-100 relative group flex flex-col">
-                  <h3 className="text-lg font-bold text-slate-800 mb-6 flex items-center gap-2">
+                <div className="bg-white dark:bg-slate-900 p-6 rounded-2xl shadow-sm border border-slate-100 dark:border-slate-800 relative group flex flex-col transition-colors">
+                  <h3 className="text-lg font-bold text-slate-800 dark:text-slate-100 mb-6 flex items-center gap-2">
                     <Stethoscope className="text-blue-500" size={20} /> פילוח לפי הכשרה רפואית
                   </h3>
                   <p className="text-xs text-blue-500 absolute top-6 left-6 opacity-0 group-hover:opacity-100 transition-opacity">לחץ על פלח לסינון</p>
@@ -593,36 +580,36 @@ function App() {
                             <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
                           ))}
                         </Pie>
-                        <Tooltip />
-                        <Legend />
+                        <Tooltip contentStyle={tooltipStyle} />
+                        <Legend wrapperStyle={{ color: chartTextColor }} />
                       </PieChart>
                     </ResponsiveContainer>
                   </div>
                 </div>
 
                 {/* Settlements Bar Chart (Paginated) */}
-                <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-100 relative group flex flex-col">
+                <div className="bg-white dark:bg-slate-900 p-6 rounded-2xl shadow-sm border border-slate-100 dark:border-slate-800 relative group flex flex-col transition-colors">
                   <div className="flex justify-between items-start mb-6">
-                    <h3 className="text-lg font-bold text-slate-800 flex items-center gap-2">
+                    <h3 className="text-lg font-bold text-slate-800 dark:text-slate-100 flex items-center gap-2">
                       <MapPin className="text-emerald-500" size={20} /> צוותים רפואיים לפי יישוב
                     </h3>
                     
                     {stats.allSettlementsData.length > settlementsPerPage && (
-                      <div className="flex items-center gap-1 bg-slate-50 rounded-lg p-1 border border-slate-100 shadow-sm" dir="ltr">
+                      <div className="flex items-center gap-1 bg-slate-50 dark:bg-slate-800 rounded-lg p-1 border border-slate-100 dark:border-slate-700 shadow-sm transition-colors" dir="ltr">
                         <button 
                           onClick={() => setSettlementsPage(p => Math.max(0, p - 1))}
                           disabled={settlementsPage === 0}
-                          className="p-1.5 rounded-md text-slate-500 hover:bg-white hover:text-slate-800 disabled:opacity-30 disabled:hover:bg-transparent disabled:cursor-not-allowed transition-all"
+                          className="p-1.5 rounded-md text-slate-500 dark:text-slate-400 hover:bg-white dark:hover:bg-slate-700 hover:text-slate-800 dark:hover:text-white disabled:opacity-30 disabled:hover:bg-transparent disabled:cursor-not-allowed transition-all"
                         >
                           <ChevronLeft size={16} />
                         </button>
-                        <span className="text-xs font-bold text-slate-600 px-2" dir="rtl">
+                        <span className="text-xs font-bold text-slate-600 dark:text-slate-300 px-2" dir="rtl">
                           מציג {Math.min((settlementsPage + 1) * settlementsPerPage, stats.allSettlementsData.length)} / {stats.allSettlementsData.length}
                         </span>
                         <button 
                           onClick={() => setSettlementsPage(p => (p + 1) * settlementsPerPage < stats.allSettlementsData.length ? p + 1 : p)}
                           disabled={(settlementsPage + 1) * settlementsPerPage >= stats.allSettlementsData.length}
-                          className="p-1.5 rounded-md text-slate-500 hover:bg-white hover:text-slate-800 disabled:opacity-30 disabled:hover:bg-transparent disabled:cursor-not-allowed transition-all"
+                          className="p-1.5 rounded-md text-slate-500 dark:text-slate-400 hover:bg-white dark:hover:bg-slate-700 hover:text-slate-800 dark:hover:text-white disabled:opacity-30 disabled:hover:bg-transparent disabled:cursor-not-allowed transition-all"
                         >
                           <ChevronRight size={16} />
                         </button>
@@ -639,10 +626,10 @@ function App() {
                           layout="vertical" 
                           margin={{ top: 5, right: 30, left: 50, bottom: 5 }}
                         >
-                          <CartesianGrid strokeDasharray="3 3" horizontal={false} />
-                          <XAxis type="number" />
-                          <YAxis dataKey="name" type="category" width={90} tick={{fontSize: 12, fill: '#475569'}} />
-                          <Tooltip cursor={{fill: '#f1f5f9'}} />
+                          <CartesianGrid strokeDasharray="3 3" horizontal={false} stroke={chartGridColor} />
+                          <XAxis type="number" tick={{ fill: chartTextColor }} />
+                          <YAxis dataKey="name" type="category" width={90} tick={{fontSize: 12, fill: chartTextColor}} />
+                          <Tooltip cursor={{fill: isDarkMode ? '#1e293b' : '#f1f5f9'}} contentStyle={tooltipStyle} />
                           <Bar 
                             dataKey="ערך" 
                             fill="#10b981" 
@@ -655,23 +642,23 @@ function App() {
                       </ResponsiveContainer>
                     </div>
                   ) : (
-                    <div className="flex-grow flex items-center justify-center text-slate-400 text-sm">אין נתונים זמינים</div>
+                    <div className="flex-grow flex items-center justify-center text-slate-400 dark:text-slate-500 text-sm">אין נתונים זמינים</div>
                   )}
                 </div>
                 
                 {/* Availability Chart */}
-                <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-100 relative group lg:col-span-2 flex flex-col">
-                  <h3 className="text-lg font-bold text-slate-800 mb-6 flex items-center gap-2">
+                <div className="bg-white dark:bg-slate-900 p-6 rounded-2xl shadow-sm border border-slate-100 dark:border-slate-800 relative group lg:col-span-2 flex flex-col transition-colors">
+                  <h3 className="text-lg font-bold text-slate-800 dark:text-slate-100 mb-6 flex items-center gap-2">
                     <AlertCircle className="text-amber-500" size={20} /> רמת זמינות בחירום (1 = לא זמין כלל, 5 = זמין מיידית)
                   </h3>
                   <p className="text-xs text-blue-500 absolute top-6 left-6 opacity-0 group-hover:opacity-100 transition-opacity">לחץ על עמודה לסינון</p>
                   <div className="h-64 w-full flex-grow" dir="ltr">
                     <ResponsiveContainer width="100%" height="100%">
                       <BarChart data={stats.availabilityData}>
-                        <CartesianGrid strokeDasharray="3 3" vertical={false} />
-                        <XAxis dataKey="name" />
-                        <YAxis />
-                        <Tooltip cursor={{fill: '#f1f5f9'}} />
+                        <CartesianGrid strokeDasharray="3 3" vertical={false} stroke={chartGridColor} />
+                        <XAxis dataKey="name" tick={{ fill: chartTextColor }} />
+                        <YAxis tick={{ fill: chartTextColor }} />
+                        <Tooltip cursor={{fill: isDarkMode ? '#1e293b' : '#f1f5f9'}} contentStyle={tooltipStyle} />
                         <Bar 
                           dataKey="ערך" 
                           fill="#f59e0b" 
@@ -688,15 +675,15 @@ function App() {
 
               {/* NEW SECTION: Operational Readiness & Constraints */}
               <div className="mt-12 space-y-6">
-                <div className="flex items-center gap-3 border-b border-slate-200 pb-4">
+                <div className="flex items-center gap-3 border-b border-slate-200 dark:border-slate-800 pb-4 transition-colors">
                   <Siren className="text-red-500" size={28} />
-                  <h2 className="text-2xl font-bold text-slate-800">כשירות מבצעית ואילוצים</h2>
+                  <h2 className="text-2xl font-bold text-slate-800 dark:text-slate-100">כשירות מבצעית ואילוצים</h2>
                 </div>
                 
                 <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
                   {/* Specialties Chart */}
-                  <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-100 flex flex-col relative group">
-                    <h3 className="text-lg font-bold text-slate-800 mb-6 flex items-center gap-2">
+                  <div className="bg-white dark:bg-slate-900 p-6 rounded-2xl shadow-sm border border-slate-100 dark:border-slate-800 flex flex-col relative group transition-colors">
+                    <h3 className="text-lg font-bold text-slate-800 dark:text-slate-100 mb-6 flex items-center gap-2">
                       <Stethoscope className="text-blue-500" size={20} /> התמחויות קריטיות (רופאים)
                     </h3>
                     <p className="text-xs text-blue-500 absolute top-6 left-6 opacity-0 group-hover:opacity-100 transition-opacity">לחץ לסינון</p>
@@ -704,10 +691,10 @@ function App() {
                       <div className="h-64 w-full flex-grow" dir="ltr">
                         <ResponsiveContainer width="100%" height="100%">
                           <BarChart data={stats.specData} layout="vertical" margin={{ left: 10, right: 20 }}>
-                            <CartesianGrid strokeDasharray="3 3" horizontal={false} />
-                            <XAxis type="number" />
-                            <YAxis dataKey="name" type="category" width={100} tick={{fontSize: 11, fill: '#475569'}} />
-                            <Tooltip cursor={{fill: '#f1f5f9'}} />
+                            <CartesianGrid strokeDasharray="3 3" horizontal={false} stroke={chartGridColor} />
+                            <XAxis type="number" tick={{ fill: chartTextColor }} />
+                            <YAxis dataKey="name" type="category" width={100} tick={{fontSize: 11, fill: chartTextColor}} />
+                            <Tooltip cursor={{fill: isDarkMode ? '#1e293b' : '#f1f5f9'}} contentStyle={tooltipStyle} />
                             <Bar 
                               dataKey="ערך" 
                               fill="#3b82f6" 
@@ -720,13 +707,13 @@ function App() {
                         </ResponsiveContainer>
                       </div>
                     ) : (
-                      <div className="flex-grow flex items-center justify-center text-slate-400 text-sm">אין מספיק נתונים על התמחויות</div>
+                      <div className="flex-grow flex items-center justify-center text-slate-400 dark:text-slate-500 text-sm">אין מספיק נתונים על התמחויות</div>
                     )}
                   </div>
 
                   {/* Organizations Chart */}
-                  <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-100 flex flex-col relative group">
-                    <h3 className="text-lg font-bold text-slate-800 mb-6 flex items-center gap-2">
+                  <div className="bg-white dark:bg-slate-900 p-6 rounded-2xl shadow-sm border border-slate-100 dark:border-slate-800 flex flex-col relative group transition-colors">
+                    <h3 className="text-lg font-bold text-slate-800 dark:text-slate-100 mb-6 flex items-center gap-2">
                       <Crosshair className="text-emerald-500" size={20} /> שיוך בארגוני הצלה
                     </h3>
                     <p className="text-xs text-blue-500 absolute top-6 left-6 opacity-0 group-hover:opacity-100 transition-opacity">לחץ לסינון</p>
@@ -750,30 +737,30 @@ function App() {
                                 <Cell key={`cell-${index}`} fill={['#ef4444', '#f97316', '#10b981', '#8b5cf6'][index % 4]} />
                               ))}
                             </Pie>
-                            <Tooltip />
-                            <Legend />
+                            <Tooltip contentStyle={tooltipStyle} />
+                            <Legend wrapperStyle={{ color: chartTextColor }} />
                           </PieChart>
                         </ResponsiveContainer>
                       </div>
                     ) : (
-                      <div className="flex-grow flex items-center justify-center text-slate-400 text-sm">לא צוין שיוך לארגוני הצלה</div>
+                      <div className="flex-grow flex items-center justify-center text-slate-400 dark:text-slate-500 text-sm">לא צוין שיוך לארגוני הצלה</div>
                     )}
                   </div>
 
                   {/* Constraints & Readiness Chart */}
-                  <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-100 flex flex-col justify-between">
+                  <div className="bg-white dark:bg-slate-900 p-6 rounded-2xl shadow-sm border border-slate-100 dark:border-slate-800 flex flex-col justify-between transition-colors">
                     <div className="relative group">
-                      <h3 className="text-lg font-bold text-slate-800 mb-6 flex items-center gap-2">
+                      <h3 className="text-lg font-bold text-slate-800 dark:text-slate-100 mb-6 flex items-center gap-2">
                         <AlertTriangle className="text-amber-500" size={20} /> אילוצים מיוחדים
                       </h3>
                       {stats.constData.length > 0 ? (
                         <div className="h-40 w-full" dir="ltr">
                           <ResponsiveContainer width="100%" height="100%">
                             <BarChart data={stats.constData} layout="vertical" margin={{ top: 5, right: 30, left: 40, bottom: 5 }}>
-                              <CartesianGrid strokeDasharray="3 3" horizontal={false} />
-                              <XAxis type="number" />
-                              <YAxis dataKey="name" type="category" width={80} tick={{fontSize: 12, fill: '#475569'}} />
-                              <Tooltip cursor={{fill: '#f1f5f9'}} />
+                              <CartesianGrid strokeDasharray="3 3" horizontal={false} stroke={chartGridColor} />
+                              <XAxis type="number" tick={{ fill: chartTextColor }} />
+                              <YAxis dataKey="name" type="category" width={80} tick={{fontSize: 12, fill: chartTextColor}} />
+                              <Tooltip cursor={{fill: isDarkMode ? '#1e293b' : '#f1f5f9'}} contentStyle={tooltipStyle} />
                               <Bar 
                                 dataKey="ערך" 
                                 fill="#f59e0b" 
@@ -786,18 +773,18 @@ function App() {
                           </ResponsiveContainer>
                         </div>
                       ) : (
-                        <div className="h-40 w-full flex items-center justify-center text-slate-400 text-sm">אין אילוצים מתועדים</div>
+                        <div className="h-40 w-full flex items-center justify-center text-slate-400 dark:text-slate-500 text-sm">אין אילוצים מתועדים</div>
                       )}
                     </div>
                     
                     <div 
                       onClick={() => handleDrillDown('active_ready', 'פראמדיקים מוכשרים (ACLS)')}
-                      className={`mt-4 pt-4 border-t border-slate-100 flex items-center gap-3 cursor-pointer group transition-colors p-2 -mx-2 rounded-xl ${drillDown?.type === 'active_ready' ? 'bg-blue-50 ring-1 ring-blue-200' : 'hover:bg-slate-50'}`}
+                      className={`mt-4 pt-4 border-t border-slate-100 dark:border-slate-800 flex items-center gap-3 cursor-pointer group transition-colors p-2 -mx-2 rounded-xl ${drillDown?.type === 'active_ready' ? 'bg-blue-50 dark:bg-blue-900/30 ring-1 ring-blue-200 dark:ring-blue-800' : 'hover:bg-slate-50 dark:hover:bg-slate-800'}`}
                     >
-                      <div className="p-2 bg-indigo-50 text-indigo-600 rounded-lg group-hover:bg-indigo-100 transition-colors"><Award size={20} /></div>
+                      <div className="p-2 bg-indigo-50 dark:bg-indigo-900/40 text-indigo-600 dark:text-indigo-400 rounded-lg group-hover:bg-indigo-100 dark:group-hover:bg-indigo-900/60 transition-colors"><Award size={20} /></div>
                       <div>
-                        <p className="text-sm text-slate-500 font-medium group-hover:text-blue-600 transition-colors">פראמדיקים מוכשרים (ACLS)</p>
-                        <p className="text-xl font-bold text-slate-800">{stats.aclsOrActiveCount} <span className="text-sm font-normal text-slate-500">אנשי צוות (לחץ לפירוט)</span></p>
+                        <p className="text-sm text-slate-500 dark:text-slate-400 font-medium group-hover:text-blue-600 dark:group-hover:text-blue-400 transition-colors">פראמדיקים מוכשרים (ACLS)</p>
+                        <p className="text-xl font-bold text-slate-800 dark:text-slate-100">{stats.aclsOrActiveCount} <span className="text-sm font-normal text-slate-500 dark:text-slate-400">אנשי צוות (לחץ לפירוט)</span></p>
                       </div>
                     </div>
                   </div>
@@ -805,10 +792,10 @@ function App() {
               </div>
               
               {/* Data Table with Pagination & Drilldown State */}
-              <div id="data-table" className="bg-white rounded-2xl shadow-sm border border-slate-100 overflow-hidden mt-12 scroll-mt-24" data-html2canvas-ignore="true">
-                 <div className="p-6 border-b border-slate-100 flex flex-wrap gap-4 justify-between items-center bg-slate-50">
-                   <h3 className="text-lg font-bold text-slate-800 flex items-center gap-2">
-                     <FileText className="text-slate-500" size={20} /> רשימת כוח אדם <span className="text-xs font-normal text-blue-500 mr-2">(לחץ על רשומה כדי לראות את כרטיס המידע המלא)</span>
+              <div id="data-table" className="bg-white dark:bg-slate-900 rounded-2xl shadow-sm border border-slate-100 dark:border-slate-800 overflow-hidden mt-12 scroll-mt-24 transition-colors" data-html2canvas-ignore="true">
+                 <div className="p-6 border-b border-slate-100 dark:border-slate-800 flex flex-wrap gap-4 justify-between items-center bg-slate-50 dark:bg-slate-800/50 transition-colors">
+                   <h3 className="text-lg font-bold text-slate-800 dark:text-slate-100 flex items-center gap-2">
+                     <FileText className="text-slate-500 dark:text-slate-400" size={20} /> רשימת כוח אדם <span className="text-xs font-normal text-blue-500 dark:text-blue-400 mr-2">(לחץ על רשומה כדי לראות את כרטיס המידע המלא)</span>
                    </h3>
                    
                    {drillDown && (
@@ -818,42 +805,42 @@ function App() {
                      </div>
                    )}
 
-                   <span className="text-sm bg-white border border-slate-200 text-slate-600 px-4 py-2 rounded-full font-bold shadow-sm">
+                   <span className="text-sm bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300 px-4 py-2 rounded-full font-bold shadow-sm transition-colors">
                      סה"כ {tableData.length} רשומות
                    </span>
                  </div>
                  
                  <div className="overflow-x-auto">
                    <table className="w-full text-right text-sm">
-                     <thead className="bg-white text-slate-500 border-b border-slate-100">
+                     <thead className="bg-white dark:bg-slate-900 text-slate-500 dark:text-slate-400 border-b border-slate-100 dark:border-slate-800 transition-colors">
                        <tr>
-                         <th className="px-6 py-4 font-bold text-slate-700">שם מלא</th>
-                         <th className="px-6 py-4 font-bold text-slate-700">טלפון / נייד</th>
-                         <th className="px-6 py-4 font-bold text-slate-700">יישוב</th>
-                         <th className="px-6 py-4 font-bold text-slate-700">הכשרה רפואית</th>
-                         <th className="px-6 py-4 font-bold text-slate-700">זמינות בחירום</th>
+                         <th className="px-6 py-4 font-bold text-slate-700 dark:text-slate-200">שם מלא</th>
+                         <th className="px-6 py-4 font-bold text-slate-700 dark:text-slate-200">טלפון / נייד</th>
+                         <th className="px-6 py-4 font-bold text-slate-700 dark:text-slate-200">יישוב</th>
+                         <th className="px-6 py-4 font-bold text-slate-700 dark:text-slate-200">הכשרה רפואית</th>
+                         <th className="px-6 py-4 font-bold text-slate-700 dark:text-slate-200">זמינות בחירום</th>
                        </tr>
                      </thead>
-                     <tbody className="divide-y divide-slate-50 bg-white">
+                     <tbody className="divide-y divide-slate-50 dark:divide-slate-800/50 bg-white dark:bg-slate-900 transition-colors">
                        {currentTableData.length > 0 ? currentTableData.map((row, idx) => (
                          <tr 
                            key={idx} 
                            onClick={() => setSelectedRowData(row)}
-                           className="hover:bg-blue-50 transition-colors cursor-pointer group"
+                           className="hover:bg-blue-50 dark:hover:bg-slate-800 transition-colors cursor-pointer group"
                          >
-                           <td className="px-6 py-4 text-slate-800 font-bold group-hover:text-blue-700 transition-colors">
+                           <td className="px-6 py-4 text-slate-800 dark:text-slate-200 font-bold group-hover:text-blue-700 dark:group-hover:text-blue-400 transition-colors">
                              {getName(row)}
                            </td>
-                           <td className="px-6 py-4 text-blue-600 font-medium" dir="ltr">
+                           <td className="px-6 py-4 text-blue-600 dark:text-blue-400 font-medium" dir="ltr">
                              {getCol(row, ['טלפון', 'נייד', 'phone', 'mobile']) || '-'}
                            </td>
-                           <td className="px-6 py-4 text-slate-600 font-medium">{getCol(row, ['יישוב', 'ישוב'])}</td>
-                           <td className="px-6 py-4 text-slate-600">
+                           <td className="px-6 py-4 text-slate-600 dark:text-slate-300 font-medium">{getCol(row, ['יישוב', 'ישוב'])}</td>
+                           <td className="px-6 py-4 text-slate-600 dark:text-slate-300">
                              {getCol(row, ['הכשרה', 'מקצוע', 'רופא', 'פרמדיק', 'אח', 'חובש', 'מע"ר']) || 'לא הוגדר'}
                            </td>
                            <td className="px-6 py-4">
                              <span className={`inline-flex items-center justify-center w-8 h-8 rounded-full font-bold ${
-                               ['4','5'].includes(getCol(row, ['זמינות'])) ? 'bg-emerald-100 text-emerald-700' : 'bg-amber-100 text-amber-700'
+                               ['4','5'].includes(getCol(row, ['זמינות'])) ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400' : 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400'
                              }`}>
                                {getCol(row, ['זמינות']) || '-'}
                              </span>
@@ -861,7 +848,7 @@ function App() {
                          </tr>
                        )) : (
                          <tr>
-                           <td colSpan={5} className="px-6 py-12 text-center text-slate-500 font-medium">לא נמצאו רשומות בחיתוך זה</td>
+                           <td colSpan={5} className="px-6 py-12 text-center text-slate-500 dark:text-slate-400 font-medium">לא נמצאו רשומות בחיתוך זה</td>
                          </tr>
                        )}
                      </tbody>
@@ -870,24 +857,24 @@ function App() {
                  
                  {/* Pagination Controls */}
                  {totalPages > 1 && (
-                   <div className="flex items-center justify-between px-6 py-4 border-t border-slate-100 bg-white">
+                   <div className="flex items-center justify-between px-6 py-4 border-t border-slate-100 dark:border-slate-800 bg-white dark:bg-slate-900 transition-colors">
                      <button 
                        onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
                        disabled={currentPage === 1}
-                       className="flex items-center gap-1 px-4 py-2 rounded-lg font-medium text-slate-600 hover:bg-slate-100 disabled:opacity-50 disabled:cursor-not-allowed transition-colors border border-slate-200"
+                       className="flex items-center gap-1 px-4 py-2 rounded-lg font-medium text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 disabled:opacity-50 disabled:cursor-not-allowed transition-colors border border-slate-200 dark:border-slate-700"
                      >
                        <ChevronRight size={18} />
                        הקודם
                      </button>
                      
-                     <span className="text-sm font-bold text-slate-700">
+                     <span className="text-sm font-bold text-slate-700 dark:text-slate-300">
                        עמוד {currentPage} מתוך {totalPages}
                      </span>
                      
                      <button 
                        onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
                        disabled={currentPage === totalPages}
-                       className="flex items-center gap-1 px-4 py-2 rounded-lg font-medium text-slate-600 hover:bg-slate-100 disabled:opacity-50 disabled:cursor-not-allowed transition-colors border border-slate-200"
+                       className="flex items-center gap-1 px-4 py-2 rounded-lg font-medium text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 disabled:opacity-50 disabled:cursor-not-allowed transition-colors border border-slate-200 dark:border-slate-700"
                      >
                        הבא
                        <ChevronLeft size={18} />
@@ -904,22 +891,22 @@ function App() {
       {/* Row Detail Modal (Smart View) */}
       {selectedRowData && (
         <div 
-          className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-900/60 p-4 backdrop-blur-sm transition-opacity" 
+          className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-900/60 dark:bg-black/80 p-4 backdrop-blur-sm transition-opacity" 
           onClick={() => setSelectedRowData(null)}
           dir="rtl"
         >
           <div 
-            className="bg-white rounded-2xl shadow-2xl w-full max-w-2xl max-h-[85vh] overflow-hidden flex flex-col animate-in zoom-in-95 duration-200"
+            className="bg-white dark:bg-slate-900 rounded-2xl shadow-2xl w-full max-w-2xl max-h-[85vh] overflow-hidden flex flex-col animate-in zoom-in-95 duration-200 border border-transparent dark:border-slate-800"
             onClick={e => e.stopPropagation()}
           >
-            <div className="p-6 border-b border-slate-100 flex justify-between items-center bg-slate-50">
-              <h2 className="text-xl font-bold text-slate-800 flex items-center gap-3">
-                <div className="p-2 bg-blue-100 text-blue-600 rounded-full"><User size={24} /></div>
+            <div className="p-6 border-b border-slate-100 dark:border-slate-800 flex justify-between items-center bg-slate-50 dark:bg-slate-800/50">
+              <h2 className="text-xl font-bold text-slate-800 dark:text-slate-100 flex items-center gap-3">
+                <div className="p-2 bg-blue-100 dark:bg-blue-900/40 text-blue-600 dark:text-blue-400 rounded-full"><User size={24} /></div>
                 כרטיס מידע אישי: {getName(selectedRowData)}
               </h2>
               <button 
                 onClick={() => setSelectedRowData(null)} 
-                className="p-2 hover:bg-slate-200 rounded-full text-slate-500 transition-colors"
+                className="p-2 hover:bg-slate-200 dark:hover:bg-slate-700 rounded-full text-slate-500 dark:text-slate-400 transition-colors"
               >
                 <X size={20} />
               </button>
@@ -955,19 +942,19 @@ function App() {
                   const isLongText = displayValue.length > 50;
                   
                   return (
-                    <div key={key} className={`border-b border-slate-100 pb-3 ${isLongText ? 'md:col-span-2' : ''}`}>
-                      <p className="text-xs font-bold text-slate-400 mb-1">{key}</p>
-                      <p className="text-sm text-slate-800 font-medium" dir="auto">{displayValue}</p>
+                    <div key={key} className={`border-b border-slate-100 dark:border-slate-800 pb-3 ${isLongText ? 'md:col-span-2' : ''}`}>
+                      <p className="text-xs font-bold text-slate-400 dark:text-slate-500 mb-1">{key}</p>
+                      <p className="text-sm text-slate-800 dark:text-slate-200 font-medium" dir="auto">{displayValue}</p>
                     </div>
                   );
                 })}
               </div>
             </div>
             
-            <div className="p-4 bg-slate-50 border-t border-slate-100 flex justify-end gap-3">
+            <div className="p-4 bg-slate-50 dark:bg-slate-800/50 border-t border-slate-100 dark:border-slate-800 flex justify-end gap-3">
               <button 
                 onClick={() => setSelectedRowData(null)}
-                className="bg-slate-800 hover:bg-slate-900 text-white px-6 py-2 rounded-lg font-bold transition-colors shadow-sm"
+                className="bg-slate-800 dark:bg-slate-700 hover:bg-slate-900 dark:hover:bg-slate-600 text-white px-6 py-2 rounded-lg font-bold transition-colors shadow-sm"
               >
                 סגור כרטיס
               </button>
